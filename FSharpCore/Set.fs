@@ -587,6 +587,10 @@ type internal SetTree<'T when 'T : comparison> =
 
     /// Computes the union of two SetTrees.
     static member Union (tree1 : SetTree<'T>, tree2 : SetTree<'T>) : SetTree<'T> =
+        (* OPTIMIZE :   This function should be re-implemented to use the linear-time
+                        algorithm which traverses both trees simultaneously and merges
+                        them in a single pass. *)
+
         // Guess which tree is larger (contains a greater number of elements) based on
         // the height of the trees; then, merge the smaller tree into the larger tree.
         if SetTree.Height tree1 < SetTree.Height tree2 then
@@ -597,23 +601,35 @@ type internal SetTree<'T when 'T : comparison> =
 
     /// Computes the intersection of two SetTrees.
     static member Intersect (tree1 : SetTree<'T>, tree2 : SetTree<'T>) : SetTree<'T> =
+        (* OPTIMIZE :   This function should be re-implemented to use the linear-time
+                        algorithm which traverses both trees simultaneously and merges
+                        them in a single pass. *)
+
         // Guess which tree is larger (contains a greater number of elements) based on
         // the height of the trees; then, fold over the larger tree, removing it's
         // elements from the smaller tree. This minimizes the overhead due to rebalancing.
         if SetTree.Height tree1 < SetTree.Height tree2 then
-            // Fold over tree2, removing it's elements from tree1
-            let result = SetTree.FoldBack SetTree.Delete tree1 tree2
-            // Now remove the elements in tree1 from the result
-            SetTree.FoldBack SetTree.Delete result tree1
+            // Fold over the smaller tree, removing any elements which
+            // are not also in the larger tree.
+            (tree1, tree1)
+            ||> SetTree.Fold (fun tree1 el ->
+                if SetTree.Contains el tree2 then tree1
+                else SetTree.Delete el tree1)
         else
-            // Fold over tree1, removing it's elements from tree2
-            let result = SetTree.FoldBack SetTree.Delete tree2 tree1
-            // Now remove the elements in tree2 from the result
-            SetTree.FoldBack SetTree.Delete result tree2
+            // Fold over the smaller tree, removing any elements which
+            // are not also in the larger tree.
+            (tree2, tree2)
+            ||> SetTree.Fold (fun tree2 el ->
+                if SetTree.Contains el tree1 then tree2
+                else SetTree.Delete el tree2)
 
     /// Returns a new SetTree created by removing the elements of the
     /// second SetTree from the first.
     static member Difference (tree1 : SetTree<'T>, tree2 : SetTree<'T>) : SetTree<'T> =
+        (* OPTIMIZE :   This function should be re-implemented to use the linear-time
+                        algorithm which traverses both trees simultaneously and merges
+                        them in a single pass. *)
+
         // Fold over tree2, removing it's elements from tree1
         SetTree.FoldBack SetTree.Delete tree1 tree2
 
