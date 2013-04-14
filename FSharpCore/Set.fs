@@ -420,6 +420,96 @@ type (*internal*) SetTree<'T when 'T : comparison> =
             // Return the final state value.
             state
 
+    //
+    static member Exists (predicate : 'T -> bool) (tree : SetTree<'T>) : bool =
+        match tree with
+        | Empty -> false
+        | Node (Empty, Empty, x, _) ->
+            // Apply the predicate function to this element and return the result.
+            predicate x
+        | Node (l, r, x, _) ->
+            /// Mutable stack. Holds the trees which still need to be traversed.
+            let stack = Stack (defaultStackCapacity)
+
+            /// Have we found a matching element?
+            let mutable foundMatch = false
+
+            // Traverse the tree using the mutable stack, applying the folder function to
+            // each value to update the state value.
+            stack.Push r
+            stack.Push <| SetTree.Singleton x
+            stack.Push l
+
+            while stack.Count > 0 && not foundMatch do
+                match stack.Pop () with
+                | Empty -> ()
+                | Node (Empty, Empty, x, _) ->
+                    // Apply the predicate to this element.
+                    foundMatch <- predicate x
+
+                | Node (Empty, z, x, _) ->
+                    // Apply the predicate to this element.
+                    foundMatch <- predicate x
+
+                    // Push the non-empty child onto the stack.
+                    stack.Push z
+
+                | Node (l, r, x, _) ->
+                    // Push the children onto the stack.
+                    // Also push a new Node onto the stack which contains the value from
+                    // this Node, so it'll be processed in the correct order.
+                    stack.Push r
+                    stack.Push <| SetTree.Singleton x
+                    stack.Push l
+
+            // Return the value indicating whether or not a matching element was found.
+            foundMatch
+
+    //
+    static member Forall (predicate : 'T -> bool) (tree : SetTree<'T>) : bool =
+        match tree with
+        | Empty -> true
+        | Node (Empty, Empty, x, _) ->
+            // Apply the predicate function to this element and return the result.
+            predicate x
+        | Node (l, r, x, _) ->
+            /// Mutable stack. Holds the trees which still need to be traversed.
+            let stack = Stack (defaultStackCapacity)
+
+            /// Have all of the elements we've seen so far matched the predicate?
+            let mutable allElementsMatch = true
+
+            // Traverse the tree using the mutable stack, applying the folder function to
+            // each value to update the state value.
+            stack.Push r
+            stack.Push <| SetTree.Singleton x
+            stack.Push l
+
+            while stack.Count > 0 && allElementsMatch do
+                match stack.Pop () with
+                | Empty -> ()
+                | Node (Empty, Empty, x, _) ->
+                    // Apply the predicate to this element.
+                    allElementsMatch <- predicate x
+
+                | Node (Empty, z, x, _) ->
+                    // Apply the predicate to this element.
+                    allElementsMatch <- predicate x
+
+                    // Push the non-empty child onto the stack.
+                    stack.Push z
+
+                | Node (l, r, x, _) ->
+                    // Push the children onto the stack.
+                    // Also push a new Node onto the stack which contains the value from
+                    // this Node, so it'll be processed in the correct order.
+                    stack.Push r
+                    stack.Push <| SetTree.Singleton x
+                    stack.Push l
+
+            // Return the value indicating if all elements matched the predicate.
+            allElementsMatch
+
     /// Builds a new SetTree from the elements of a sequence.
     static member OfSeq (sequence : seq<_>) : SetTree<'T> =
         (Empty, sequence)
@@ -513,13 +603,29 @@ type (*internal*) SetTree<'T when 'T : comparison> =
 
 //
 [<Sealed; CompiledName("FSharpSet`1")>]
+#if FX_NO_DEBUG_PROXIES
+#else
+[<System.Diagnostics.DebuggerTypeProxy(typedefof<SetDebugView<_>>)>]
+#endif
+#if FX_NO_DEBUG_DISPLAYS
+#else
+[<System.Diagnostics.DebuggerDisplay("Count = {Count}")>]
+#endif
+[<CodeAnalysis.SuppressMessage("Microsoft.Naming", "CA1710:IdentifiersShouldHaveCorrectSuffix")>]
 type Set<[<EqualityConditionalOn>] 'T when 'T : comparison> private (tree : SetTree<'T>) =
     /// The empty set instance.
-    static let empty = Set Empty
+    static let empty : Set<'T> = Set Empty
 
     /// The empty set instance.
     static member internal Empty =
         empty
+
+    //
+    new (elements : seq<'T>) =
+        // Preconditions
+        // TODO : Check for null input.
+
+        Set (SetTree.OfSeq elements)
 
     //
     member private __.Tree
@@ -528,7 +634,7 @@ type Set<[<EqualityConditionalOn>] 'T when 'T : comparison> private (tree : SetT
     //
     member __.Count
         with get () =
-            SetTree.Count tree
+            int <| SetTree.Count tree
 
     //
     member __.IsEmpty
@@ -566,30 +672,6 @@ type Set<[<EqualityConditionalOn>] 'T when 'T : comparison> private (tree : SetT
         let tree' = SetTree.Delete value tree
         if System.Object.ReferenceEquals (tree, tree') then this
         else Set (tree')
-
-    //
-    static member op_Addition (set1 : Set<'T>, set2 : Set<'T>) : Set<'T> =
-        Set<'T>.Union (set1, set2)
-
-    //
-    static member op_Subtraction (set1 : Set<'T>, set2 : Set<'T>) : Set<'T> =
-        Set<'T>.Difference (set1, set2)
-
-    //
-    member __.IsSubsetOf (otherSet : Set<'T>) : bool =
-        raise <| System.NotImplementedException "Set.IsSubsetOf"
-
-    //
-    member __.IsProperSubsetOf (otherSet : Set<'T>) : bool =
-        raise <| System.NotImplementedException "Set.IsProperSubsetOf"
-
-    //
-    member __.IsSupersetOf (otherSet : Set<'T>) : bool =
-        raise <| System.NotImplementedException "Set.IsSupersetOf"
-
-    //
-    member __.IsProperSupersetOf (otherSet : Set<'T>) : bool =
-        raise <| System.NotImplementedException "Set.IsProperSupersetOf"
 
     //
     static member internal Singleton (value : 'T) : Set<'T> =
@@ -665,6 +747,164 @@ type Set<[<EqualityConditionalOn>] 'T when 'T : comparison> private (tree : SetT
     member internal __.ToArray () =
         SetTree.ToArray tree
 
+    //
+    static member op_Addition (set1 : Set<'T>, set2 : Set<'T>) : Set<'T> =
+        Set<'T>.Union (set1, set2)
+
+    //
+    static member op_Subtraction (set1 : Set<'T>, set2 : Set<'T>) : Set<'T> =
+        Set<'T>.Difference (set1, set2)
+
+    //
+    member __.IsSubsetOf (otherSet : Set<'T>) : bool =
+        raise <| System.NotImplementedException "Set.IsSubsetOf"
+
+    //
+    member __.IsProperSubsetOf (otherSet : Set<'T>) : bool =
+        raise <| System.NotImplementedException "Set.IsProperSubsetOf"
+
+    //
+    member __.IsSupersetOf (otherSet : Set<'T>) : bool =
+        raise <| System.NotImplementedException "Set.IsSupersetOf"
+
+    //
+    member __.IsProperSupersetOf (otherSet : Set<'T>) : bool =
+        raise <| System.NotImplementedException "Set.IsProperSupersetOf"
+
+    //
+    member internal __.Iterate (action : 'T -> unit) : unit =
+        SetTree.Iter action tree
+
+    //
+    member internal __.Exists (predicate : 'T -> bool) : bool =
+        SetTree.Exists predicate tree
+
+    //
+    member internal __.ForAll (predicate : 'T -> bool) : bool =
+        SetTree.Forall predicate tree
+
+    //
+    member internal __.Fold (folder : 'State -> 'T -> 'State) (state : 'State) : 'State =
+        SetTree.Fold folder state tree
+
+    //
+    member internal __.FoldBack (folder : 'T -> 'State -> 'State) (state : 'State) : 'State =
+        SetTree.FoldBack folder state tree
+
+    //
+    member internal __.Map (mapping : 'T -> 'U) : Set<'U> =
+        let mappedTree =
+            (SetTree.Empty, tree)
+            ||> SetTree.Fold (fun mappedTree el ->
+                SetTree.Insert (mapping el) mappedTree)
+
+        Set (mappedTree)
+
+    //
+    member internal __.Filter (predicate : 'T -> bool) : Set<'T> =
+        let filteredTree =
+            (SetTree.Empty, tree)
+            ||> SetTree.Fold (fun mappedTree el ->
+                if predicate el then mappedTree
+                else SetTree.Delete el mappedTree)
+
+        Set (filteredTree)
+
+    //
+    member internal this.Partition (predicate : 'T -> bool) : Set<'T> * Set<'T> =
+        let trueTree, falseTree =
+            ((tree, tree), tree)
+            ||> SetTree.Fold (fun (trueTree, falseTree) el ->
+                if predicate el then
+                    trueTree,
+                    SetTree.Delete el falseTree
+                else
+                    SetTree.Delete el trueTree,
+                    falseTree)
+
+        // If either of the 'true' or 'false' trees are equivalent to the input tree,
+        // return this set as one component of the returned tuple -- this avoids creating
+        // an additional set for no reason.
+        if System.Object.ReferenceEquals (tree, trueTree) then
+            this, empty
+        elif System.Object.ReferenceEquals (tree, falseTree) then
+            empty, this
+        else
+            Set (trueTree), Set (falseTree)
+
+    //
+    override __.Equals other : bool =
+        raise <| System.NotImplementedException "Set.Equals"
+
+    interface System.IComparable with
+        /// <inherit />
+        member __.CompareTo other =
+            raise <| System.NotImplementedException ()
+
+    interface System.Collections.IEnumerable with
+        /// <inherit />
+        member __.GetEnumerator () =
+            (SetTree.ToSeq tree).GetEnumerator ()
+            :> System.Collections.IEnumerator
+
+    interface IEnumerable<'T> with
+        /// <inherit />
+        member __.GetEnumerator () =
+            (SetTree.ToSeq tree).GetEnumerator ()
+
+    interface ICollection<'T> with
+        /// <inherit />
+        member __.Count
+            with get () =
+                int <| SetTree.Count tree
+
+        /// <inherit />
+        member __.IsReadOnly
+            with get () = true
+
+        /// <inherit />
+        member __.Add x =
+            raise <| System.NotSupportedException "IntSets cannot be mutated."
+
+        /// <inherit />
+        member __.Clear () =
+            raise <| System.NotSupportedException "IntSets cannot be mutated."
+
+        /// <inherit />
+        member __.Contains (item : 'T) =
+            SetTree.Contains item tree
+
+        /// <inherit />
+        member this.CopyTo (array, arrayIndex) =
+            // Preconditions
+            if System.Object.ReferenceEquals (null, array) then
+                nullArg "array"
+            elif arrayIndex < 0 then
+                raise <| System.ArgumentOutOfRangeException "arrayIndex"
+
+            let count = int <| SetTree.Count tree
+            if arrayIndex + count > Array.length array then
+                invalidArg "arrayIndex"
+                    "There is not enough room in the array to copy the \
+                     elements when starting at the specified index."
+
+            this.Fold (fun index el ->
+                array.[index] <- el
+                index + 1) arrayIndex
+            |> ignore
+
+        /// <inherit />
+        member __.Remove item : bool =
+            raise <| System.NotSupportedException "IntSets cannot be mutated."
+
+and [<Sealed>]
+    internal SetDebugView<'T when 'T : comparison> (set : Set<'T>) =
+
+    [<DebuggerBrowsable(DebuggerBrowsableState.RootHidden)>]
+    member __.Items
+        with get () : 'T[] =
+            set.ToArray ()
+
 //
 [<RequireQualifiedAccess; CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
 module Set =
@@ -690,37 +930,38 @@ module Set =
     let unionMany sets = Set<_>.UnionMany(sets)
 
     [<CompiledName("Intersect")>]
-    let intersect (s1 : Set<'T>)  (s2 : Set<'T>)  = Set<'T>.Intersection(s1,s2)
+    let intersect (s1 : Set<'T>) (s2 : Set<'T>) = Set<'T>.Intersection(s1,s2)
 
     [<CompiledName("IntersectMany")>]
-    let intersectMany sets  = Set<_>.IntersectMany(sets)
+    let intersectMany sets = Set<_>.IntersectMany(sets)
 
-//    [<CompiledName("Iterate")>]
-//    let iter f (s : Set<'T>)  = s.Iterate(f)
+    [<CompiledName("Iterate")>]
+    let iter f (s : Set<'T>) = s.Iterate(f)
 
-//    [<CompiledName("Empty")>]
-//    let empty<'T when 'T : comparison> : Set<'T> = Set<'T>.Empty
+    [<GeneralizableValue>]
+    [<CompiledName("Empty")>]
+    let empty<'T when 'T : comparison> : Set<'T> = Set<'T>.Empty
 
-//    [<CompiledName("ForAll")>]
-//    let forall f (s : Set<'T>) = s.ForAll f
-//
-//    [<CompiledName("Exists")>]
-//    let exists f (s : Set<'T>) = s.Exists f
-//
-//    [<CompiledName("Filter")>]
-//    let filter f (s : Set<'T>) = s.Filter f
-//
-//    [<CompiledName("Partition")>]
-//    let partition f (s : Set<'T>) = s.Partition f 
-//
-//    [<CompiledName("Fold")>]
-//    let fold<'T,'State  when 'T : comparison> f (z:'State) (s : Set<'T>) = SetTree.fold f z s.Tree
-//
-//    [<CompiledName("FoldBack")>]
-//    let foldBack<'T,'State when 'T : comparison> f (s : Set<'T>) (z:'State) = SetTree.foldBack f s.Tree z
-//
-//    [<CompiledName("Map")>]
-//    let map f (s : Set<'T>) = s.Map f
+    [<CompiledName("ForAll")>]
+    let forall f (s : Set<'T>) = s.ForAll f
+
+    [<CompiledName("Exists")>]
+    let exists f (s : Set<'T>) = s.Exists f
+
+    [<CompiledName("Filter")>]
+    let filter f (s : Set<'T>) = s.Filter f
+
+    [<CompiledName("Partition")>]
+    let partition f (s : Set<'T>) = s.Partition f 
+
+    [<CompiledName("Fold")>]
+    let fold<'T, 'State when 'T : comparison> f (z : 'State) (s : Set<'T>) = s.Fold f z
+
+    [<CompiledName("FoldBack")>]
+    let foldBack<'T, 'State when 'T : comparison> f (s : Set<'T>) (z : 'State) = s.FoldBack f z
+
+    [<CompiledName("Map")>]
+    let map f (s : Set<'T>) = s.Map f
 
     [<CompiledName("Count")>]
     let count (s : Set<'T>) = s.Count
@@ -753,24 +994,25 @@ module Set =
     [<CompiledName("Difference")>]
     let (*inline*) difference (s1: Set<'T>) (s2: Set<'T>) = s1 - s2
 
-//    [<CompiledName("IsSubset")>]
-//    let isSubset (x:Set<'T>) (y: Set<'T>) = SetTree.subset x.Comparer x.Tree y.Tree 
-//
-//    [<CompiledName("IsSuperset")>]
-//    let isSuperset (x:Set<'T>) (y: Set<'T>) = SetTree.subset x.Comparer y.Tree x.Tree
-//
-//    [<CompiledName("IsProperSubset")>]
-//    let isProperSubset (x:Set<'T>) (y: Set<'T>) = SetTree.psubset x.Comparer x.Tree y.Tree 
-//
-//    [<CompiledName("IsProperSuperset")>]
-//    let isProperSuperset (x:Set<'T>) (y: Set<'T>) = SetTree.psubset x.Comparer y.Tree x.Tree
+    [<CompiledName("IsSubset")>]
+    let (*inline*) isSubset (x:Set<'T>) (y: Set<'T>) =
+        x.IsSubsetOf y
+
+    [<CompiledName("IsSuperset")>]
+    let (*inline*) isSuperset (x:Set<'T>) (y: Set<'T>) =
+        x.IsSupersetOf y
+
+    [<CompiledName("IsProperSubset")>]
+    let (*inline*) isProperSubset (x:Set<'T>) (y: Set<'T>) =
+        x.IsProperSubsetOf y
+
+    [<CompiledName("IsProperSuperset")>]
+    let (*inline*) isProperSuperset (x:Set<'T>) (y: Set<'T>) =
+        x.IsProperSupersetOf y
 
     [<CompiledName("MinElement")>]
     let (*inline*) minElement (s : Set<'T>) = s.MinimumElement
 
     [<CompiledName("MaxElement")>]
     let (*inline*) maxElement (s : Set<'T>) = s.MaximumElement
-
-
-    
 
