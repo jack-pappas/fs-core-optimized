@@ -40,8 +40,12 @@
   <ItemGroup>
     <None Include="packages.config" />
     <None Include="app.config" />
-    <Compile Include="Set.fs" />
-    <Compile Include="Map.fs" />
+    <Compile Include="NUnitFrameworkShims.fs" />
+    <Compile Include="LibraryTestFx.fs" />
+    <Compile Include="SetType.fs" />
+    <Compile Include="SetModule.fs" />
+    <Compile Include="MapType.fs" />
+    <Compile Include="MapModule.fs" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="FsUnit.NUnit">
