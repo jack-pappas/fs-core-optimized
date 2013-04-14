@@ -1,0 +1,26 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 2012
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "FSharpCore", "FSharpCore.fsproj", "{14A60072-DFA5-4BE2-A6C5-C8F842366DC0}"
+EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "FSharpCore.Tests", "..\FSharpCore.Tests\FSharpCore.Tests.fsproj", "{196F294A-8E8A-421F-8892-0A027B7FF276}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{14A60072-DFA5-4BE2-A6C5-C8F842366DC0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{14A60072-DFA5-4BE2-A6C5-C8F842366DC0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{14A60072-DFA5-4BE2-A6C5-C8F842366DC0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{14A60072-DFA5-4BE2-A6C5-C8F842366DC0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{196F294A-8E8A-421F-8892-0A027B7FF276}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{196F294A-8E8A-421F-8892-0A027B7FF276}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{196F294A-8E8A-421F-8892-0A027B7FF276}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{196F294A-8E8A-421F-8892-0A027B7FF276}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
