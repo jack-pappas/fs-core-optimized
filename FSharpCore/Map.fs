@@ -151,7 +151,7 @@ type internal MapTree<'Key, 'Value when 'Key : comparison> =
             MapTree.mkt_bal_r new_n l right
 
     /// Determines if a MapTree contains a specified value.
-    static member ContainsKey key (tree : MapTree<'Key, 'Value>) =
+    static member ContainsKey key (tree : MapTree<'Key, 'Value>) : bool =
         match tree with
         | Empty ->
             false
@@ -163,6 +163,20 @@ type internal MapTree<'Key, 'Value when 'Key : comparison> =
                 MapTree.ContainsKey key l
             else                        // key > k
                 MapTree.ContainsKey key r
+
+    /// Try to find a value associated with the specified key in a MapTree.
+    static member TryFind key (tree : MapTree<'Key, 'Value>) : 'Value option =
+        match tree with
+        | Empty ->
+            None
+        | Node (l, r, (k, v), _) ->
+            let comparison = compare key k
+            if comparison = 0 then      // key = k
+                Some v
+            elif comparison < 0 then    // key < k
+                MapTree.TryFind key l
+            else                        // key > k
+                MapTree.TryFind key r
 
     /// Removes the specified value from the tree.
     /// If the tree doesn't contain the value, no exception is thrown;
@@ -189,10 +203,14 @@ type internal MapTree<'Key, 'Value when 'Key : comparison> =
         match tree with
         | Empty ->
             Node (Empty, Empty, (key, value), 1u)
-        | Node (l, r, ((k, _) as n), _) as tree ->
+        | Node (l, r, ((k, v) as n), h) as tree ->
             let comparison = compare key k
             if comparison = 0 then                              // x = k
-                tree
+                // Try to determine if the new value is the same as the existing value;
+                // if so, we can just return the original tree instead of creating a new one.
+                if Unchecked.equals v value then tree
+                else
+                    Node (l, r, (key, value), h)
             elif comparison < 0 then                            // x < k
                 MapTree.mkt_bal_l n (MapTree.Insert (key, value) l) r
             else                                                // x > k
@@ -380,6 +398,54 @@ type internal MapTree<'Key, 'Value when 'Key : comparison> =
             // Return the final state value.
             state
 
+    //
+    static member TryPick (picker : 'Key -> 'Value -> 'T option) (tree : MapTree<'Key, 'Value>) : 'T option =
+        match tree with
+        | Empty -> None
+        | Node (Empty, Empty, (k, v), _) ->
+            // Apply the predicate function to this element and return the result.
+            picker k v
+        | Node (l, r, (k, v), _) ->
+            // Adapt the picker function since we'll always supply all of the arguments at once.
+            let picker = FSharpFunc<_,_,_>.Adapt picker
+
+            /// Mutable stack. Holds the trees which still need to be traversed.
+            let stack = Stack (defaultStackCapacity)
+
+            /// The picked value, if one has been picked.
+            let mutable pickedValue = None
+
+            // Traverse the tree using the mutable stack, applying the picker function to
+            // each value to update 'pickedValue'.
+            stack.Push r
+            stack.Push <| MapTree.Singleton k v
+            stack.Push l
+
+            while stack.Count > 0 && Option.isNone pickedValue do
+                match stack.Pop () with
+                | Empty -> ()
+                | Node (Empty, Empty, (k, v), _) ->
+                    // Apply the picker to this element.
+                    pickedValue <- picker.Invoke (k, v)
+
+                | Node (Empty, z, (k, v), _) ->
+                    // Apply the picker to this element.
+                    pickedValue <- picker.Invoke (k, v)
+
+                    // Push the non-empty child onto the stack.
+                    stack.Push z
+
+                | Node (l, r, (k, v), _) ->
+                    // Push the children onto the stack.
+                    // Also push a new Node onto the stack which contains the value from
+                    // this Node, so it'll be processed in the correct order.
+                    stack.Push r
+                    stack.Push <| MapTree.Singleton k v
+                    stack.Push l
+
+            // Return the picked value, if any.
+            pickedValue
+
     /// Tests if any element of the collection satisfies the given predicate.
     static member Exists (predicate : 'Key -> 'Value -> bool) (tree : MapTree<'Key, 'Value>) : bool =
         match tree with
@@ -397,8 +463,8 @@ type internal MapTree<'Key, 'Value when 'Key : comparison> =
             /// Have we found a matching element?
             let mutable foundMatch = false
 
-            // Traverse the tree using the mutable stack, applying the folder function to
-            // each value to update the state value.
+            // Traverse the tree using the mutable stack, applying the predicate function to
+            // each value to update 'foundMatch'.
             stack.Push r
             stack.Push <| MapTree.Singleton k v
             stack.Push l
@@ -445,8 +511,8 @@ type internal MapTree<'Key, 'Value when 'Key : comparison> =
             /// Have all of the elements we've seen so far matched the predicate?
             let mutable allElementsMatch = true
 
-            // Traverse the tree using the mutable stack, applying the folder function to
-            // each value to update the state value.
+            // Traverse the tree using the mutable stack, applying the predicate function to
+            // each value to update 'allElementsMatch'.
             stack.Push r
             stack.Push <| MapTree.Singleton k v
             stack.Push l
@@ -748,16 +814,24 @@ type Map<[<EqualityConditionalOn>] 'Key, [<EqualityConditionalOn;ComparisonCondi
             | Node (_,_,_,_) -> false
 
     //
+    member __.Item
+        with get (key : 'Key) =
+            match MapTree.TryFind key tree with
+            | None ->
+                raise <| System.Collections.Generic.KeyNotFoundException ()
+            | Some value ->
+                value
+
+    //
     member __.ContainsKey (key : 'Key) : bool =
         MapTree.ContainsKey key tree
 
-//    //
-//    member __.Item
-//        with get (key : 'Key) =
-//            MapTree.Find key tree
+    //
+    member __.TryFind (key : 'Key) : 'Value option =
+        MapTree.TryFind key tree
 
     //
-    member this.Add (key : 'Key) (value : 'Value) : Map<'Key, 'Value> =
+    member this.Add (key : 'Key, value : 'Value) : Map<'Key, 'Value> =
         // Add the element to the MapTree; if the result is the same (i.e., the tree
         // already contained the element), return this set instead of creating a new one.
         let tree' = MapTree.Insert (key, value) tree
@@ -819,6 +893,10 @@ type Map<[<EqualityConditionalOn>] 'Key, [<EqualityConditionalOn;ComparisonCondi
         MapTree.Iter action tree
 
     //
+    member internal __.TryPick (picker : 'Key -> 'Value -> 'U option) : 'U option =
+        MapTree.TryPick picker tree
+
+    //
     member internal __.Exists (predicate : 'Key -> 'Value -> bool) : bool =
         MapTree.Exists predicate tree
 
@@ -876,7 +954,6 @@ type Map<[<EqualityConditionalOn>] 'Key, [<EqualityConditionalOn;ComparisonCondi
         else
             Map (trueTree), Map (falseTree)
 
-
     // OPTIMIZE : Instead of computing this repeatedly -- this type is immutable so we should
     // lazily compute the hashcode once instead; however, we do need to account for the case
     // where an instance is created via deserialization, so it may make sense to use a 'ref'
@@ -904,7 +981,11 @@ type Map<[<EqualityConditionalOn>] 'Key, [<EqualityConditionalOn;ComparisonCondi
             let rec loop () =
                 let m1 = e1.MoveNext ()
                 let m2 = e2.MoveNext ()
-                (m1 = m2) && (not m1 || ((e1.Current.Key = e2.Current.Key) && (Unchecked.equals e1.Current.Value e2.Current.Value) && loop()))
+                (m1 = m2)
+                && (not m1 ||
+                    ((e1.Current.Key = e2.Current.Key)
+                    && (Unchecked.equals e1.Current.Value e2.Current.Value)
+                    && loop ()))
             loop ()
         | _ -> false
 
@@ -953,41 +1034,45 @@ type Map<[<EqualityConditionalOn>] 'Key, [<EqualityConditionalOn;ComparisonCondi
         member m.GetEnumerator() = (MapIterator.mkIEnumerator tree :> System.Collections.IEnumerator)
 
     interface IDictionary<'Key, 'Value> with
-        member m.Item
-            with get x = m.[x]
-            and set _ _ = raise <| System.NotSupportedException (SR.GetString SR.mapCannotBeMutated)
+        member this.Item
+            with get x = this.[x]
+            and set _ _ =
+                //raise <| System.NotSupportedException (SR.GetString SR.mapCannotBeMutated)
+                raise <| System.NotSupportedException "mapCannotBeMutated"
 
         // REVIEW: this implementation could avoid copying the Values to an array
-        member s.Keys = ([| for kvp in s -> kvp.Key |] :> ICollection<'Key>)
+        member this.Keys = ([| for kvp in this -> kvp.Key |] :> ICollection<'Key>)
 
         // REVIEW: this implementation could avoid copying the Values to an array
-        member s.Values = ([| for kvp in s -> kvp.Value |] :> ICollection<'Value>)
+        member this.Values = ([| for kvp in this -> kvp.Value |] :> ICollection<'Value>)
 
-        member s.Add (_, _) =
-            raise <| System.NotSupportedException (SR.GetString SR.mapCannotBeMutated)
-        member s.ContainsKey k =
-            s.ContainsKey k
-        member s.TryGetValue (k, r) =
-            if s.ContainsKey k then
-                r <- s.[k]
+        member __.Add (_, _) =
+            //raise <| System.NotSupportedException (SR.GetString SR.mapCannotBeMutated)
+            raise <| System.NotSupportedException "mapCannotBeMutated"
+        member this.ContainsKey k =
+            this.ContainsKey k
+        member this.TryGetValue (k, r) =
+            if this.ContainsKey k then
+                r <- this.[k]
                 true
             else false
-        member s.Remove (_ : 'Key) : bool =
-            raise <| System.NotSupportedException (SR.GetString SR.mapCannotBeMutated)
+        member __.Remove (_ : 'Key) : bool =
+            //raise <| System.NotSupportedException (SR.GetString SR.mapCannotBeMutated)
+            raise <| System.NotSupportedException "mapCannotBeMutated"
 
     interface ICollection<KeyValuePair<'Key, 'Value>> with
-        member s.Add _ =
-            raise <| System.NotSupportedException (SR.GetString SR.mapCannotBeMutated)
-        member s.Clear () =
-            raise <| System.NotSupportedException (SR.GetString SR.mapCannotBeMutated)
-        member s.Remove _ =
-            raise <| System.NotSupportedException (SR.GetString SR.mapCannotBeMutated)
-        member s.Contains(x) =
-            s.ContainsKey(x.Key) && Unchecked.equals s.[x.Key] x.Value
-        member s.CopyTo (array, arrayIndex) =
-            //MapTree.copyToArray tree arr i
-            (*
-
+        member __.Add _ =
+            //raise <| System.NotSupportedException (SR.GetString SR.mapCannotBeMutated)
+            raise <| System.NotSupportedException "mapCannotBeMutated"
+        member __.Clear () =
+            //raise <| System.NotSupportedException (SR.GetString SR.mapCannotBeMutated)
+            raise <| System.NotSupportedException "mapCannotBeMutated"
+        member __.Remove _ =
+            //raise <| System.NotSupportedException (SR.GetString SR.mapCannotBeMutated)
+            raise <| System.NotSupportedException "mapCannotBeMutated"
+        member this.Contains x =
+            this.ContainsKey(x.Key) && Unchecked.equals this.[x.Key] x.Value
+        member this.CopyTo (array, arrayIndex) : unit =
             // Preconditions
             if System.Object.ReferenceEquals (null, array) then
                 nullArg "array"
@@ -999,13 +1084,12 @@ type Map<[<EqualityConditionalOn>] 'Key, [<EqualityConditionalOn;ComparisonCondi
                 invalidArg "arrayIndex"
                     "There is not enough room in the array to copy the elements when starting at the specified index."
 
-            this.Fold (fun index el ->
-                array.[index] <- el
-                index + 1) arrayIndex
+            arrayIndex
+            |> this.Fold (fun index key value ->
+                array.[index] <- KeyValuePair (key, value)
+                index + 1)
             |> ignore
 
-            *)
-            raise <| System.NotImplementedException ()
         member s.IsReadOnly =
             true
         member s.Count =
@@ -1023,7 +1107,8 @@ type Map<[<EqualityConditionalOn>] 'Key, [<EqualityConditionalOn;ComparisonCondi
                             Unchecked.compare kvp1.Value kvp2.Value
                         | c -> c)
             | _ ->
-                invalidArg "obj" (SR.GetString SR.notComparable)
+                //invalidArg "obj" (SR.GetString SR.notComparable)
+                invalidArg "obj" "notComparable"
 
 and [<Sealed>]
     internal MapDebugView<'Key, 'Value when 'Key : comparison> (map : Map<'Key, 'Value>) =
@@ -1037,7 +1122,6 @@ and [<Sealed>]
             //map |> Seq.truncate mapDebugViewMaxElementCount |> Seq.toArray
             map.ToKvpArray ()
 
-(*
 //
 [<RequireQualifiedAccess; CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
 module Map =
@@ -1066,7 +1150,10 @@ module Map =
     let tryPick f (m:Map<_,_>) = m.TryPick(f)
 
     [<CompiledName("Pick")>]
-    let pick f (m:Map<_,_>) = match tryPick f m with None -> raise (System.Collections.Generic.KeyNotFoundException()) | Some res -> res
+    let pick f (m:Map<_,_>) =
+        match tryPick f m with
+        | None -> raise <| System.Collections.Generic.KeyNotFoundException ()
+        | Some res -> res
 
     [<CompiledName("Exists")>]
     let exists f (m:Map<_,_>) = m.Exists(f)
@@ -1080,20 +1167,18 @@ module Map =
     [<CompiledName("ForAll")>]
     let forall f (m:Map<_,_>) = m.ForAll(f)
 
-    let mapRange f (m:Map<_,_>) = m.MapRange(f)
+    //let mapRange f (m:Map<_,_>) = m.MapRange(f)
 
     [<CompiledName("Map")>]
     let map f (m:Map<_,_>) = m.Map(f)
 
     [<CompiledName("Fold")>]
-    let fold<'Key,'T,'State when 'Key : comparison> f (z:'State) (m:Map<'Key,'T>) = 
-        let f = OptimizedClosures.FSharpFunc<_,_,_,_>.Adapt(f)
-        MapTree.fold f z m.Tree
+    let fold<'Key,'T,'State when 'Key : comparison> f (z:'State) (m:Map<'Key,'T>) =
+        m.Fold f z
 
     [<CompiledName("FoldBack")>]
-    let foldBack<'Key,'T,'State  when 'Key : comparison> f (m:Map<'Key,'T>) (z:'State) = 
-        let f = OptimizedClosures.FSharpFunc<_,_,_,_>.Adapt(f)
-        MapTree.foldBack  f m.Tree z
+    let foldBack<'Key,'T,'State  when 'Key : comparison> f (m:Map<'Key,'T>) (z:'State) =
+        m.FoldBack f z
         
     [<CompiledName("ToSeq")>]
     let toSeq (m:Map<_,_>) = m |> Seq.map (fun kvp -> kvp.Key, kvp.Value)
@@ -1105,15 +1190,14 @@ module Map =
     let tryFindKey f (m : Map<_,_>) = m |> toSeq |> Seq.tryPick (fun (k,v) -> if f k v then Some(k) else None)
 
     [<CompiledName("OfList")>]
-    let ofList (l: ('Key * 'Value) list) = Map<_,_>.ofList(l)
+    let ofList (l: ('Key * 'Value) list) = Map<_,_>.FromList(l)
 
     [<CompiledName("OfSeq")>]
-    let ofSeq l = Map<_,_>.Create(l)
+    let ofSeq sequence = Map<_,_> (sequence)
 
     [<CompiledName("OfArray")>]
-    let ofArray (array: ('Key * 'Value) array) = 
-        let comparer = LanguagePrimitives.FastGenericComparer<'Key> 
-        new Map<_,_>(comparer,MapTree.ofArray comparer array)
+    let ofArray (array: ('Key * 'Value)[]) =
+        Map<_,_>.FromArray array
 
     [<CompiledName("ToList")>]
     let toList (m:Map<_,_>) = m.ToList()
@@ -1121,7 +1205,6 @@ module Map =
     [<CompiledName("ToArray")>]
     let toArray (m:Map<_,_>) = m.ToArray()
 
-
     [<CompiledName("Empty")>]
     let empty<'Key,'Value  when 'Key : comparison> = Map<'Key,'Value>.Empty
-*)
+

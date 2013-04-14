@@ -42,7 +42,9 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Pervasive.fs" />
+    <Compile Include="Set.fsi" />
     <Compile Include="Set.fs" />
+    <Compile Include="Map.fsi" />
     <Compile Include="Map.fs" />
   </ItemGroup>
   <PropertyGroup>
