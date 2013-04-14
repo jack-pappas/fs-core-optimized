@@ -24,7 +24,8 @@ module internal Constants =
     let [<Literal>] defaultStackCapacity = 16
     //
     let [<Literal>] setDebugViewMaxElementCount = 1000
-
+    //
+    let [<Literal>] mapDebugViewMaxElementCount = 1000
 
 
 // Taken from 'src/fsharp/FSharp.Core/prim-types.fs';

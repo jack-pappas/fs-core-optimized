@@ -525,6 +525,14 @@ type internal MapTree<'Key, 'Value when 'Key : comparison> =
             elements.Add (key, value))
         elements.ToArray ()
 
+    /// Returns an array containing the elements stored in
+    /// a MapTree, ordered from least to greatest.
+    static member ToKvpArray (tree : MapTree<'Key, 'Value>) =
+        let elements = ResizeArray ()
+        tree |> MapTree.Iter (fun key value ->
+            elements.Add <| KeyValuePair (key, value))
+        elements.ToArray ()
+
     static member private CompareStacks (l1 : MapTree<'Key, 'Value> list, l2 : MapTree<'Key, 'Value> list) : int =
         match l1, l2 with
         | [], [] -> 0
@@ -646,23 +654,24 @@ type internal MapIterator<'Key, 'Value when 'Key : comparison> = {
             interface System.IDisposable with
                 member __.Dispose () = () }
 
-(*
+
 //
 [<Sealed; CompiledName("FSharpMap`2")>]
 #if FX_NO_DEBUG_PROXIES
 #else
-[<DebuggerTypeProxy(typedefof<SetDebugView<_>>)>]
+[<DebuggerTypeProxy(typedefof<MapDebugView<_,_>>)>]
 #endif
 #if FX_NO_DEBUG_DISPLAYS
 #else
 [<DebuggerDisplay("Count = {Count}")>]
 #endif
 [<CodeAnalysis.SuppressMessage("Microsoft.Naming", "CA1710:IdentifiersShouldHaveCorrectSuffix")>]
-type Map<[<EqualityConditionalOn>] 'T when 'T : comparison> private (tree : MapTree<'Key, 'Value>) =
+type Map<[<EqualityConditionalOn>] 'Key, [<EqualityConditionalOn;ComparisonConditionalOn>] 'Value when 'Key : comparison>
+    private (tree : MapTree<'Key, 'Value>) =
     // We use .NET generics per-instantiation static fields to avoid allocating a new object for each empty
     // set (it is just a lookup into a .NET table of type-instantiation-indexed static fields).
     /// The empty set instance.
-    static let empty : Set<'T> = Set Empty
+    static let empty : Map<'Key, 'Value> = Map Empty
 
 #if FX_NO_BINARY_SERIALIZATION
 #else
@@ -710,13 +719,13 @@ type Map<[<EqualityConditionalOn>] 'T when 'T : comparison> private (tree : MapT
         empty
 
     //
-    new (elements : seq<'T>) =
+    new (elements : seq<'Key * 'Value>) =
         // Preconditions
         // TODO : Check for null input.
 
         // OPTIMIZE : Try to cast the sequence to array or list;
         // if it succeeds use the specialized method for that type for better performance.
-        Set (MapTree.OfSeq elements)
+        Map (MapTree.OfSeq elements)
 
     //
     member private __.Tree
@@ -735,117 +744,54 @@ type Map<[<EqualityConditionalOn>] 'T when 'T : comparison> private (tree : MapT
             | Node (_,_,_,_) -> false
 
     //
-#if FX_NO_DEBUG_DISPLAYS
-#else
-    [<DebuggerBrowsable(DebuggerBrowsableState.Never)>]
-#endif
-    member __.MinimumElement
-        with get () =
-            MapTree.MinElement tree
+    member __.ContainsKey (key : 'Key) : bool =
+        MapTree.ContainsKey key tree
 
     //
-#if FX_NO_DEBUG_DISPLAYS
-#else
-    [<DebuggerBrowsable(DebuggerBrowsableState.Never)>]
-#endif
-    member __.MaximumElement
-        with get () =
-            MapTree.MaxElement tree
-
-    //
-    member __.Contains (value : 'T) : bool =
-        MapTree.Contains value tree
-
-    //
-    member this.Add (value : 'T) : Set<'T> =
+    member this.Add (key : 'Key) (value : 'Value) : Map<'Key, 'Value> =
         // Add the element to the MapTree; if the result is the same (i.e., the tree
         // already contained the element), return this set instead of creating a new one.
-        let tree' = MapTree.Insert value tree
+        let tree' = MapTree.Insert (key, value) tree
         if System.Object.ReferenceEquals (tree, tree') then this
-        else Set (tree')
+        else Map (tree')
 
     //
-    member this.Remove (value : 'T) : Set<'T> =
+    member this.Remove (key : 'Key) : Map<'Key, 'Value> =
         // Remove the element from the MapTree; if the result is the same (i.e., the tree
         // did not contain the element), return this set instead of creating a new one.
-        let tree' = MapTree.Delete value tree
+        let tree' = MapTree.Delete key tree
         if System.Object.ReferenceEquals (tree, tree') then this
-        else Set (tree')
+        else Map (tree')
 
     //
-    static member internal Singleton (value : 'T) : Set<'T> =
-        Set (MapTree.Singleton value)
+    static member internal Singleton key value : Map<'Key, 'Value> =
+        Map (MapTree.Singleton key value)
 
     //
-    static member internal Union (set1 : Set<'T>, set2 : Set<'T>) : Set<'T> =
-        // Compute the union of the trees.
-        // If the result is the same as either tree (i.e., one set was a subset of the other)
-        // return that tree's corresponding set instead of creating a new one.
-        let result = MapTree.Union (set1.Tree, set2.Tree)
-        if System.Object.ReferenceEquals (set1.Tree, result) then set1
-        elif System.Object.ReferenceEquals (set2.Tree, result) then set2
-        else Set (result)
-
-    //
-    static member internal Intersection (set1 : Set<'T>, set2 : Set<'T>) : Set<'T> =
-        // Compute the intersection of the trees.
-        // If the result is the same as either tree (i.e., one set was a subset of the other)
-        // return that tree's corresponding set instead of creating a new one.
-        let result = MapTree.Intersect (set1.Tree, set2.Tree)
-        if System.Object.ReferenceEquals (set1.Tree, result) then set1
-        elif System.Object.ReferenceEquals (set2.Tree, result) then set2
-        else Set (result)
-
-    //
-    static member internal Difference (set1 : Set<'T>, set2 : Set<'T>) : Set<'T> =
-        // Remove the elements in set2 from set1.
-        // If the result is the same as set1's tree (i.e., set2 did not contain any elements
-        // from set1), return set1 instead of creating a new set.
-        let result = MapTree.Difference (set1.Tree, set2.Tree)
-        if System.Object.ReferenceEquals (set1.Tree, result) then set1
-        else Set (result)
-
-    //
-    static member internal UnionMany (sets : seq<Set<'T>>) : Set<'T> =
-        // Preconditions
-        // TODO : Check input for null.
-
-        let combinedMapTree =
-            (MapTree.Empty, sets)
-            ||> Seq.fold (fun combinedMapTree set ->
-                MapTree.Union (combinedMapTree, set.Tree))
-
-        Set (combinedMapTree)
-
-    //
-    static member internal IntersectMany (sets : seq<Set<'T>>) : Set<'T> =
-        Seq.reduce (fun s1 s2 -> Set<_>.Intersection(s1,s2)) sets
-
-    //
-    static member internal FromSeq (sequence : seq<'T>) : Set<'T> =
+    static member internal FromSeq (sequence : seq<'Key * 'Value>) : Map<'Key, 'Value> =
         // Preconditions
         // TODO
 
-        Set (MapTree.OfSeq sequence)
+        Map (MapTree.OfSeq sequence)
 
     //
-    static member internal FromList (list : 'T list) : Set<'T> =
+    static member internal FromList (list : ('Key * 'Value) list) : Map<'Key, 'Value> =
         // Preconditions
         // TODO
 
-        Set (MapTree.OfList list)
+        Map (MapTree.OfList list)
 
     //
-    static member internal FromArray (arr : 'T[]) : Set<'T> =
+    static member internal FromArray (arr : ('Key * 'Value)[]) : Map<'Key, 'Value> =
         // Preconditions
         // TODO
 
-        Set (MapTree.OfArray arr)
+        Map (MapTree.OfArray arr)
 
-    //
-    member internal this.ToSeq () : seq<'T> =
-        //MapTree.ToSeq tree
-        this :> seq<_>
+//    //
+//    member internal this.ToSeq () : seq<'T> =
+//        //MapTree.ToSeq tree
+//        this :> seq<_>
 
     //
     member internal __.ToList () =
@@ -856,78 +802,59 @@ type Map<[<EqualityConditionalOn>] 'T when 'T : comparison> private (tree : MapT
         MapTree.ToArray tree
 
     //
-    static member op_Addition (set1 : Set<'T>, set2 : Set<'T>) : Set<'T> =
-        Set<'T>.Union (set1, set2)
+    member internal __.ToKvpArray () =
+        MapTree.ToKvpArray tree
 
     //
-    static member op_Subtraction (set1 : Set<'T>, set2 : Set<'T>) : Set<'T> =
-        Set<'T>.Difference (set1, set2)
-
-    //
-    member __.IsSubsetOf (otherSet : Set<'T>) : bool =
-        MapTree.IsSubset (tree, otherSet.Tree)
-
-    //
-    member __.IsProperSubsetOf (otherSet : Set<'T>) : bool =
-        MapTree.IsProperSubset (tree, otherSet.Tree)
-
-    //
-    member __.IsSupersetOf (otherSet : Set<'T>) : bool =
-        MapTree.IsSubset (otherSet.Tree, tree)
-
-    //
-    member __.IsProperSupersetOf (otherSet : Set<'T>) : bool =
-        MapTree.IsProperSubset (otherSet.Tree, tree)
-
-    //
-    member internal __.Iterate (action : 'T -> unit) : unit =
+    member internal __.Iterate (action : 'Key -> 'Value -> unit) : unit =
         MapTree.Iter action tree
 
     //
-    member internal __.Exists (predicate : 'T -> bool) : bool =
+    member internal __.Exists (predicate : 'Key -> 'Value -> bool) : bool =
         MapTree.Exists predicate tree
 
     //
-    member internal __.ForAll (predicate : 'T -> bool) : bool =
+    member internal __.ForAll (predicate : 'Key -> 'Value -> bool) : bool =
         MapTree.Forall predicate tree
 
     //
-    member internal __.Fold (folder : 'State -> 'T -> 'State) (state : 'State) : 'State =
+    member internal __.Fold (folder : 'State -> 'Key -> 'Value -> 'State) (state : 'State) : 'State =
         MapTree.Fold folder state tree
 
     //
-    member internal __.FoldBack (folder : 'T -> 'State -> 'State) (state : 'State) : 'State =
+    member internal __.FoldBack (folder : 'Key -> 'Value -> 'State -> 'State) (state : 'State) : 'State =
         MapTree.FoldBack folder state tree
 
     //
-    member internal __.Map (mapping : 'T -> 'U) : Set<'U> =
+    member internal __.Map (mapping : 'Key -> 'Value -> 'U) : Map<'Key, 'U> =
         let mappedTree =
             (MapTree.Empty, tree)
-            ||> MapTree.Fold (fun mappedTree el ->
-                MapTree.Insert (mapping el) mappedTree)
+            ||> MapTree.Fold (fun mappedTree key value ->
+                let mappedValue = mapping key value
+                MapTree.Insert (key, mappedValue) mappedTree)
 
-        Set (mappedTree)
+        Map (mappedTree)
 
     //
-    member internal __.Filter (predicate : 'T -> bool) : Set<'T> =
+    member internal __.Filter (predicate : 'Key -> 'Value -> bool) : Map<'Key, 'Value> =
         let filteredTree =
             (tree, tree)
-            ||> MapTree.Fold (fun filteredTree el ->
-                if predicate el then filteredTree
-                else MapTree.Delete el filteredTree)
+            ||> MapTree.Fold (fun filteredTree key value ->
+                if predicate key value then filteredTree
+                else MapTree.Delete key filteredTree)
 
-        Set (filteredTree)
+        Map (filteredTree)
 
     //
-    member internal this.Partition (predicate : 'T -> bool) : Set<'T> * Set<'T> =
+    member internal this.Partition (predicate : 'Key -> 'Value -> bool) : Map<'Key, 'Value> * Map<'Key, 'Value> =
         let trueTree, falseTree =
             ((tree, tree), tree)
-            ||> MapTree.Fold (fun (trueTree, falseTree) el ->
-                if predicate el then
+            ||> MapTree.Fold (fun (trueTree, falseTree) key value ->
+                if predicate key value then
                     trueTree,
-                    MapTree.Delete el falseTree
+                    MapTree.Delete key falseTree
                 else
-                    MapTree.Delete el trueTree,
+                    MapTree.Delete key trueTree,
                     falseTree)
 
         // If either of the 'true' or 'false' trees are equivalent to the input tree,
@@ -938,8 +865,9 @@ type Map<[<EqualityConditionalOn>] 'T when 'T : comparison> private (tree : MapT
         elif System.Object.ReferenceEquals (tree, falseTree) then
             empty, this
         else
-            Set (trueTree), Set (falseTree)
+            Map (trueTree), Map (falseTree)
 
+(*
     // OPTIMIZE : Instead of computing this repeatedly -- this type is immutable so we should
     // lazily compute the hashcode once instead; however, we do need to account for the case
     // where an instance is created via deserialization, so it may make sense to use a 'ref'
@@ -1069,129 +997,105 @@ type Map<[<EqualityConditionalOn>] 'T when 'T : comparison> private (tree : MapT
         /// <inherit />
         member __.Remove _ : bool =
             raise <| System.NotSupportedException "ReadOnlyCollection"
+*)
 
 and [<Sealed>]
-    internal SetDebugView<'T when 'T : comparison> (set : Set<'T>) =
+    internal MapDebugView<'Key, 'Value when 'Key : comparison> (map : Map<'Key, 'Value>) =
 
 #if FX_NO_DEBUG_DISPLAYS
 #else
     [<DebuggerBrowsable(DebuggerBrowsableState.RootHidden)>]
 #endif
     member __.Items
-        with get () : 'T[] =
-            //set |> Seq.truncate setDebugViewMaxElementCount |> Seq.toArray
-            set.ToArray ()
+        with get () : KeyValuePair<'Key, 'Value>[] =
+            //map |> Seq.truncate mapDebugViewMaxElementCount |> Seq.toArray
+            map.ToKvpArray ()
 
+(*
 //
 [<RequireQualifiedAccess; CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
-module Set =
+module Map =
     [<CompiledName("IsEmpty")>]
-    let (*inline*) isEmpty (s : Set<'T>) = s.IsEmpty
-
-    [<CompiledName("Contains")>]
-    let (*inline*) contains x (s : Set<'T>) = s.Contains(x)
+    let isEmpty (m:Map<_,_>) = m.IsEmpty
 
     [<CompiledName("Add")>]
-    let (*inline*) add x (s : Set<'T>) = s.Add(x)
+    let add k v (m:Map<_,_>) = m.Add(k,v)
 
-    [<CompiledName("Singleton")>]
-    let singleton x = Set<'T>.Singleton(x)
+    [<CompiledName("Find")>]
+    let find k (m:Map<_,_>) = m.[k]
+
+    [<CompiledName("TryFind")>]
+    let tryFind k (m:Map<_,_>) = m.TryFind(k)
 
     [<CompiledName("Remove")>]
-    let (*inline*) remove x (s : Set<'T>) = s.Remove(x)
+    let remove k (m:Map<_,_>) = m.Remove(k)
 
-    [<CompiledName("Union")>]
-    let (*inline*) union (s1 : Set<'T>) (s2 : Set<'T>) = s1 + s2
-
-    [<CompiledName("UnionMany")>]
-    let unionMany sets = Set<_>.UnionMany(sets)
-
-    [<CompiledName("Intersect")>]
-    let intersect (s1 : Set<'T>) (s2 : Set<'T>) = Set<'T>.Intersection(s1,s2)
-
-    [<CompiledName("IntersectMany")>]
-    let intersectMany sets = Set<_>.IntersectMany(sets)
+    [<CompiledName("ContainsKey")>]
+    let containsKey k (m:Map<_,_>) = m.ContainsKey(k)
 
     [<CompiledName("Iterate")>]
-    let iter f (s : Set<'T>) = s.Iterate(f)
+    let iter f (m:Map<_,_>) = m.Iterate(f)
 
-    [<GeneralizableValue>]
-    [<CompiledName("Empty")>]
-    let empty<'T when 'T : comparison> : Set<'T> = Set<'T>.Empty
+    [<CompiledName("TryPick")>]
+    let tryPick f (m:Map<_,_>) = m.TryPick(f)
 
-    [<CompiledName("ForAll")>]
-    let forall f (s : Set<'T>) = s.ForAll f
+    [<CompiledName("Pick")>]
+    let pick f (m:Map<_,_>) = match tryPick f m with None -> raise (System.Collections.Generic.KeyNotFoundException()) | Some res -> res
 
     [<CompiledName("Exists")>]
-    let exists f (s : Set<'T>) = s.Exists f
+    let exists f (m:Map<_,_>) = m.Exists(f)
 
     [<CompiledName("Filter")>]
-    let filter f (s : Set<'T>) = s.Filter f
+    let filter f (m:Map<_,_>) = m.Filter(f)
 
     [<CompiledName("Partition")>]
-    let partition f (s : Set<'T>) = s.Partition f 
+    let partition f (m:Map<_,_>) = m.Partition(f)
 
-    [<CompiledName("Fold")>]
-    let fold<'T, 'State when 'T : comparison> f (z : 'State) (s : Set<'T>) = s.Fold f z
+    [<CompiledName("ForAll")>]
+    let forall f (m:Map<_,_>) = m.ForAll(f)
 
-    [<CompiledName("FoldBack")>]
-    let foldBack<'T, 'State when 'T : comparison> f (s : Set<'T>) (z : 'State) = s.FoldBack f z
+    let mapRange f (m:Map<_,_>) = m.MapRange(f)
 
     [<CompiledName("Map")>]
-    let map f (s : Set<'T>) = s.Map f
+    let map f (m:Map<_,_>) = m.Map(f)
 
-    [<CompiledName("Count")>]
-    let count (s : Set<'T>) = s.Count
+    [<CompiledName("Fold")>]
+    let fold<'Key,'T,'State when 'Key : comparison> f (z:'State) (m:Map<'Key,'T>) = 
+        let f = OptimizedClosures.FSharpFunc<_,_,_,_>.Adapt(f)
+        MapTree.fold f z m.Tree
 
-    [<CompiledName("MinumumElement")>]
-    let minimumElement (s : Set<'T>) = s.MinimumElement
+    [<CompiledName("FoldBack")>]
+    let foldBack<'Key,'T,'State  when 'Key : comparison> f (m:Map<'Key,'T>) (z:'State) = 
+        let f = OptimizedClosures.FSharpFunc<_,_,_,_>.Adapt(f)
+        MapTree.foldBack  f m.Tree z
+        
+    [<CompiledName("ToSeq")>]
+    let toSeq (m:Map<_,_>) = m |> Seq.map (fun kvp -> kvp.Key, kvp.Value)
 
-    [<CompiledName("MaximumElement")>]
-    let maximumElement (s : Set<'T>) = s.MaximumElement
+    [<CompiledName("FindKey")>]
+    let findKey f (m : Map<_,_>) = m |> toSeq |> Seq.pick (fun (k,v) -> if f k v then Some(k) else None)
+
+    [<CompiledName("TryFindKey")>]
+    let tryFindKey f (m : Map<_,_>) = m |> toSeq |> Seq.tryPick (fun (k,v) -> if f k v then Some(k) else None)
 
     [<CompiledName("OfList")>]
-    let ofList l = Set<_>.FromList l
-
-    [<CompiledName("OfArray")>]
-    let ofArray (l : 'T array) = Set<'T>.FromArray l
-
-    [<CompiledName("ToList")>]
-    let toList (s : Set<'T>) = s.ToList()
- 
-    [<CompiledName("ToArray")>]
-    let toArray (s : Set<'T>) = s.ToArray()
-
-    [<CompiledName("ToSeq")>]
-    let (*inline*) toSeq (s : Set<'T>) : seq<'T> =
-        //s.ToSeq ()
-        (s :> seq<_>)
+    let ofList (l: ('Key * 'Value) list) = Map<_,_>.ofList(l)
 
     [<CompiledName("OfSeq")>]
-    let ofSeq (c : seq<_>) = Set<_>.FromSeq c
+    let ofSeq l = Map<_,_>.Create(l)
 
-    [<CompiledName("Difference")>]
-    let (*inline*) difference (s1: Set<'T>) (s2: Set<'T>) = s1 - s2
+    [<CompiledName("OfArray")>]
+    let ofArray (array: ('Key * 'Value) array) = 
+        let comparer = LanguagePrimitives.FastGenericComparer<'Key> 
+        new Map<_,_>(comparer,MapTree.ofArray comparer array)
 
-    [<CompiledName("IsSubset")>]
-    let (*inline*) isSubset (x:Set<'T>) (y: Set<'T>) =
-        x.IsSubsetOf y
+    [<CompiledName("ToList")>]
+    let toList (m:Map<_,_>) = m.ToList()
 
-    [<CompiledName("IsSuperset")>]
-    let (*inline*) isSuperset (x:Set<'T>) (y: Set<'T>) =
-        x.IsSupersetOf y
+    [<CompiledName("ToArray")>]
+    let toArray (m:Map<_,_>) = m.ToArray()
 
-    [<CompiledName("IsProperSubset")>]
-    let (*inline*) isProperSubset (x:Set<'T>) (y: Set<'T>) =
-        x.IsProperSubsetOf y
 
-    [<CompiledName("IsProperSuperset")>]
-    let (*inline*) isProperSuperset (x:Set<'T>) (y: Set<'T>) =
-        x.IsProperSupersetOf y
-
-    [<CompiledName("MinElement")>]
-    let (*inline*) minElement (s : Set<'T>) = s.MinimumElement
-
-    [<CompiledName("MaxElement")>]
-    let (*inline*) maxElement (s : Set<'T>) = s.MaximumElement
-
+    [<CompiledName("Empty")>]
+    let empty<'Key,'Value  when 'Key : comparison> = Map<'Key,'Value>.Empty
 *)
