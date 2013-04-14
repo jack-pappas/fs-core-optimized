@@ -689,6 +689,75 @@ type internal SetTree<'T when 'T : comparison> =
         | _ ->
             SetTree<'T>.CompareStacks [s1] [s2]
 
+(*** Imperative left-to-right iterators. ***)
+
+[<NoEquality; NoComparison>]
+type internal SetIterator<'T> when 'T : comparison  = 
+    { mutable stack: SetTree<'T> list;  // invariant: always collapseLHS result 
+        mutable started : bool           // true when MoveNext has been called   
+    }
+
+[<RequireQualifiedAccess; CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
+module internal SetIterator =
+    open System.Collections
+    open System.Collections.Generic
+
+    // collapseLHS:
+    // a) Always returns either [] or a list starting with SetOne.
+    // b) The "fringe" of the set stack is unchanged.
+    let rec collapseLHS stack =
+        match stack with
+        | [] -> []
+        | Empty :: rest ->
+            collapseLHS rest
+        | Node (Empty, Empty, _, _) :: _ ->
+            stack
+        | Node (l,r,k,_) :: rest ->
+            collapseLHS (l :: (Node (Empty, Empty, k, 0u)) :: r :: rest)
+          
+    let mkIterator s = {
+        stack = collapseLHS [s];
+        started = false; }
+
+    let notStarted () =
+        //raise (new System.InvalidOperationException(SR.GetString(SR.enumerationNotStarted)))
+        invalidOp "enumerationNotStarted"
+    let alreadyFinished () =
+        //raise (new System.InvalidOperationException(SR.GetString(SR.enumerationAlreadyFinished)))
+        invalidOp "enumerationAlreadyFinished"
+
+    let current i =
+        if i.started then
+            match i.stack with
+            | Node (Empty, Empty, k, _) :: _ -> k
+            | [] -> alreadyFinished ()
+            | _ -> failwith "Please report error: Set iterator, unexpected stack for current"
+        else
+            notStarted ()
+
+    let rec moveNext i =
+        if i.started then
+            match i.stack with
+            | Node (Empty, Empty, _, _) :: rest ->
+                i.stack <- collapseLHS rest
+                not i.stack.IsEmpty
+            | [] -> false
+            | _ -> failwith "Please report error: Set iterator, unexpected stack for moveNext"
+        else
+            i.started <- true       // The first call to MoveNext "starts" the enumeration.
+            not i.stack.IsEmpty
+
+    let mkIEnumerator s =
+        let i = ref (mkIterator s)
+        { new IEnumerator<_> with
+                member __.Current = current !i
+            interface IEnumerator with
+                member __.Current = box (current !i)
+                member __.MoveNext () = moveNext !i
+                member __.Reset () = i := mkIterator s
+            interface System.IDisposable with
+                member __.Dispose () = () }
+
 
 //
 [<Sealed; CompiledName("FSharpSet`1")>]
@@ -797,7 +866,15 @@ type Set<[<EqualityConditionalOn>] 'T when 'T : comparison> private (tree : SetT
 
     //
     static member internal UnionMany (sets : seq<Set<'T>>) : Set<'T> =
-        Seq.fold (fun s1 s2 -> s1 + s2) Set<'T>.Empty sets
+        // Preconditions
+        // TODO : Check input for null.
+
+        let combinedSetTree =
+            (SetTree.Empty, sets)
+            ||> Seq.fold (fun combinedSetTree set ->
+                SetTree.Union (combinedSetTree, set.Tree))
+
+        Set (combinedSetTree)
 
     //
     static member internal IntersectMany (sets : seq<Set<'T>>) : Set<'T> =
@@ -997,13 +1074,15 @@ type Set<[<EqualityConditionalOn>] 'T when 'T : comparison> private (tree : SetT
     interface System.Collections.IEnumerable with
         /// <inherit />
         member __.GetEnumerator () =
-            (SetTree.ToSeq tree).GetEnumerator ()
+//            (SetTree.ToSeq tree).GetEnumerator ()
+            SetIterator.mkIEnumerator tree
             :> System.Collections.IEnumerator
 
     interface IEnumerable<'T> with
         /// <inherit />
         member __.GetEnumerator () =
-            (SetTree.ToSeq tree).GetEnumerator ()
+            //(SetTree.ToSeq tree).GetEnumerator ()
+            SetIterator.mkIEnumerator tree
 
     interface ICollection<'T> with
         /// <inherit />
@@ -1140,7 +1219,9 @@ module Set =
     let toArray (s : Set<'T>) = s.ToArray()
 
     [<CompiledName("ToSeq")>]
-    let toSeq (s : Set<'T>) : seq<'T> = s.ToSeq ()
+    let toSeq (s : Set<'T>) : seq<'T> =
+        //s.ToSeq ()
+        (s :> seq<_>)
 
     [<CompiledName("OfSeq")>]
     let ofSeq (c : seq<_>) = Set<_>.FromSeq c
