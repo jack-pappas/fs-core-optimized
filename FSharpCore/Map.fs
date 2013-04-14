@@ -35,7 +35,7 @@ open OptimizedClosures
 /// AVL tree which serves as the internal representation of the Map type.
 [<NoEquality; NoComparison>]
 [<CompilationRepresentation(CompilationRepresentationFlags.UseNullAsTrueValue)>]
-type (*internal*) MapTree<'T when 'T : comparison> =
+type internal MapTree<'T when 'T : comparison> =
     /// Empty tree.
     | Empty
     /// Node.
