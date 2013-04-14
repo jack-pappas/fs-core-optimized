@@ -35,387 +35,1163 @@ open OptimizedClosures
 /// AVL tree which serves as the internal representation of the Map type.
 [<NoEquality; NoComparison>]
 [<CompilationRepresentation(CompilationRepresentationFlags.UseNullAsTrueValue)>]
-type internal MapTree<'T when 'T : comparison> =
+type internal MapTree<'Key, 'Value when 'Key : comparison> =
     /// Empty tree.
     | Empty
     /// Node.
-    // Left-Child, Right-Child, Value, Height
-    | Node of MapTree<'T> * MapTree<'T> * 'T * uint32
+    // Left-Child, Right-Child, Key, Value, Height
+    | Node of MapTree<'Key, 'Value> * MapTree<'Key, 'Value> * ('Key * 'Value) * uint32
 
+    #if CHECKED
+    /// Implementation. Returns the height of a MapTree.
+    static member private ComputeHeightRec (tree : MapTree<'Key, 'Value>) cont =
+        match tree with
+        | Empty ->
+            cont 0u
+        | Node (l, r, _, _) ->
+            MapTree.ComputeHeightRec l <| fun height_l ->
+            MapTree.ComputeHeightRec r <| fun height_r ->
+                (max height_l height_r) + 1u
+                |> cont
 
-/// Functional operators on AVL trees.
-[<RequireQualifiedAccess; CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
-module internal MapTree =
+    /// Returns the height of a MapTree.
+    static member private ComputeHeight (tree : MapTree<'Key, 'Value>) =
+        MapTree.ComputeHeightRec tree id
+        
+    /// Determines if a MapTree is correctly formed.
+    /// It isn't necessary to call this at run-time, though it may be useful for asserting
+    /// the correctness of functions which weren't extracted from the Isabelle/HOL theory.
+    static member private AvlInvariant (tree : MapTree<'Key, 'Value>) =
+        match tree with
+        | Empty -> true
+        | Node (l, r, x, h) ->
+            let height_l = MapTree.ComputeHeight l
+            let height_r = MapTree.ComputeHeight r
+            height_l = height_r
+            || (height_l = (1u + height_r) || height_r = (1u + height_l))
+            && h = ((max height_l height_r) + 1u)
+            && MapTree.AvlInvariant l
+            && MapTree.AvlInvariant r
+#endif
 
-    /// Returns the height of an AVL tree's root node.
-    let inline height (tree : MapTree<'T>) =
+    /// Returns the height of a MapTree.
+    static member inline private Height (tree : MapTree<'Key, 'Value>) =
         match tree with
         | Empty -> 0u
         | Node (_,_,_,h) -> h
 
-    /// Determines if an AVL tree is empty.
-    let isEmpty (tree : MapTree<'T>) =
+    /// Determines if a MapTree is empty.
+    static member inline IsEmptyTree (tree : MapTree<'Key, 'Value>) =
         match tree with
         | Empty -> true
         | Node (_,_,_,_) -> false
 
-    /// Creates an AVL tree whose root node holds the specified value
+    /// Creates a MapTree whose root node holds the specified value
     /// and the specified left and right subtrees.
-    let inline internal create value l (r : MapTree<'T>) =
-        Node (l, r, value, (max (height l) (height r)) + 1u)
+    static member inline private Create value l (r : MapTree<'Key, 'Value>) =
+        Node (l, r, value, (max (MapTree.Height l) (MapTree.Height r)) + 1u)
 
-    /// Creates an AVL tree containing the specified value.
-    let singleton value : MapTree<'T> =
-        create value Empty Empty
+    /// Creates a MapTree containing the specified value.
+    static member Singleton key value : MapTree<'Key, 'Value> =
+        MapTree.Create (key, value) Empty Empty
 
-    let rec private mkt_bal_l n l (r : MapTree<'T>) =
-        if height l = height r + 2u then
+    static member private mkt_bal_l n l (r : MapTree<'Key, 'Value>) =
+        if MapTree.Height l = MapTree.Height r + 2u then
             match l with
             | Empty ->
                 failwith "mkt_bal_l"
             | Node (ll, lr, ln, _) ->
-                if height ll < height lr then
+                if MapTree.Height ll < MapTree.Height lr then
                     match lr with
                     | Empty ->
                         failwith "mkt_bal_l"
                     | Node (lrl, lrr, lrn, _) ->
-                        create lrn (create ln ll lrl) (create n lrr r)
+                        MapTree.Create lrn (MapTree.Create ln ll lrl) (MapTree.Create n lrr r)
                 else
-                    create ln ll (create n lr r)
+                    MapTree.Create ln ll (MapTree.Create n lr r)
         else
-            create n l r
+            MapTree.Create n l r
 
-    let rec private mkt_bal_r n l (r : MapTree<'T>) =
-        if height r = height l + 2u then
+    static member private mkt_bal_r n l (r : MapTree<'Key, 'Value>) =
+        if MapTree.Height r = MapTree.Height l + 2u then
             match r with
             | Empty ->
                 failwith "mkt_bal_r"
             | Node (rl, rr, rn, _) ->
-                if height rr < height rl then
+                if MapTree.Height rr < MapTree.Height rl then
                     match rl with
                     | Empty ->
                         failwith "mkt_bal_r"
                     | Node (rll, rlr, rln, _) ->
-                        create rln (create n l rll) (create rn rlr rr)
+                        MapTree.Create rln (MapTree.Create n l rll) (MapTree.Create rn rlr rr)
                 else
-                    create rn (create n l rl) rr
+                    MapTree.Create rn (MapTree.Create n l rl) rr
         else
-            create n l r
+            MapTree.Create n l r
 
-    let rec private delete_max = function
+    static member private DeleteMax (tree : MapTree<'Key, 'Value>) =
+        match tree with
         | Empty ->
             invalidArg "tree" "Cannot delete the maximum value from an empty tree."
         | Node (l, Empty, n, _) ->
             n, l
         | Node (l, (Node (_,_,_,_) as right), n, _) ->
-            let na, r = delete_max right
-            na, mkt_bal_l n l r
+            let na, r = MapTree.DeleteMax right
+            na, MapTree.mkt_bal_l n l r
 
-    let private delete_root = function
+    static member private DeleteRoot (tree : MapTree<'Key, 'Value>) =
+        match tree with
         | Empty ->
             invalidArg "tree" "Cannot delete the root of an empty tree."
         | Node (Empty, r, _, _) -> r
         | Node ((Node (_,_,_,_) as left), Empty, _, _) ->
             left
         | Node ((Node (_,_,_,_) as left), (Node (_,_,_,_) as right), _, _) ->
-            let new_n, l = delete_max left
-            mkt_bal_r new_n l right
+            let new_n, l = MapTree.DeleteMax left
+            MapTree.mkt_bal_r new_n l right
 
-    /// Implementation. Returns the height of an AVL tree.
-    // OPTIMIZE : This should be re-implemented without continuations --
-    // move it into 'computeHeight' and use a mutable stack to traverse the tree.
-    let rec private computeHeightRec (tree : MapTree<'T>) cont =
-        match tree with
-        | Empty ->
-            cont 0u
-        | Node (l, r, _, _) ->
-            computeHeightRec l <| fun height_l ->
-            computeHeightRec r <| fun height_r ->
-                (max height_l height_r) + 1u
-                |> cont
-
-    /// Returns the height of an AVL tree.
-    let internal computeHeight (tree : MapTree<'T>) =
-        computeHeightRec tree id
-        
-    /// Determines if an AVL tree is correctly formed.
-    /// It isn't necessary to call this at run-time, though it may be useful for asserting
-    /// the correctness of functions which weren't extracted from the Isabelle theory.
-    let rec internal avl = function
-        | Empty -> true
-        | Node (l, r, x, h) ->
-            let height_l = computeHeight l
-            let height_r = computeHeight r
-            height_l = height_r
-            || (height_l = (1u + height_r) || height_r = (1u + height_l))
-            && h = ((max height_l height_r) + 1u)
-            && avl l
-            && avl r
-
-    /// Determines if an AVL tree contains a specified value.
-    let rec contains value (tree : MapTree<'T>) =
+    /// Determines if a MapTree contains a specified value.
+    static member ContainsKey key (tree : MapTree<'Key, 'Value>) =
         match tree with
         | Empty ->
             false
-        | Node (l, r, n, _) ->
-            let comparison = compare value n
-            if comparison = 0 then      // value = n
+        | Node (l, r, (k, _), _) ->
+            let comparison = compare key k
+            if comparison = 0 then      // key = k
                 true
-            elif comparison < 0 then    // value < n
-                contains value l
-            else                        // value > n
-                contains value r
+            elif comparison < 0 then    // key < k
+                MapTree.ContainsKey key l
+            else                        // key > k
+                MapTree.ContainsKey key r
 
     /// Removes the specified value from the tree.
     /// If the tree doesn't contain the value, no exception is thrown;
     /// the tree will be returned without modification.
-    let rec delete x (tree : MapTree<'T>) =
+    static member Delete key (tree : MapTree<'Key, 'Value>) =
         match tree with
         | Empty ->
             Empty
-        | Node (l, r, n, _) as tree ->
-            let comparison = compare x n
-            if comparison = 0 then      // x = n
-                delete_root tree
-            elif comparison < 0 then    // x < n
-                let la = delete x l
-                mkt_bal_r n la r
-            else                        // x > n
-                let a = delete x r
-                mkt_bal_l n l a
+        | Node (l, r, ((k, _) as n), _) as tree ->
+            let comparison = compare key k
+            if comparison = 0 then              // key = k
+                MapTree.DeleteRoot tree
+            elif comparison < 0 then            // key < k
+                let la = MapTree.Delete key l
+                MapTree.mkt_bal_r n la r
+            else                                // key > k
+                let a = MapTree.Delete key r
+                MapTree.mkt_bal_l n l a
 
-    /// Adds a value to an AVL tree.
+    /// Adds a value to a MapTree.
     /// If the tree already contains the value, no exception is thrown;
     /// the tree will be returned without modification.
-    let rec insert x (tree : MapTree<'T>) =
+    static member Insert (key, value) (tree : MapTree<'Key, 'Value>) =
         match tree with
         | Empty ->
-            Node (Empty, Empty, x, 1u)
-        | Node (l, r, n, _) as tree ->
-            let comparison = compare x n
-            if comparison = 0 then      // x = n
+            Node (Empty, Empty, (key, value), 1u)
+        | Node (l, r, ((k, _) as n), _) as tree ->
+            let comparison = compare key k
+            if comparison = 0 then                              // x = k
                 tree
-            elif comparison < 0 then    // x < n
-                mkt_bal_l n (insert x l) r
-            else                        // x > n
-                mkt_bal_r n l (insert x r)
-
-    /// Gets the maximum (greatest) value stored in the AVL tree.
-    let rec maxElement (tree : MapTree<'T>) =
-        match tree with
-        | Empty ->
-            invalidArg "tree" "The tree is empty."
-        | Node (_, Empty, n, _) ->
-            n
-        | Node (_, (Node (_,_,_,_) as right), _, _) ->
-            maxElement right
-
-    /// Gets the minimum (least) value stored in the AVL tree.
-    let rec minElement (tree : MapTree<'T>) =
-        match tree with
-        | Empty ->
-            invalidArg "tree" "The tree is empty."
-        | Node (Empty, _, n, _) ->
-            n
-        | Node ((Node (_,_,_,_) as left), _, _, _) ->
-            minElement left
-
-    /// Implementation.
-    /// Applies the given accumulating function to all elements in an AVL tree.
-    let rec private foldRec (folder : FSharpFunc<'State, _, 'State>) (state : 'State) (tree : MapTree<'T>) cont =
-        match tree with
-        | Empty ->
-            cont state
-        | Node (l, r, n, _) ->
-            // Fold over the left subtree first.
-            foldRec folder state l <| fun state ->
-                // Apply the folder function to this node's value.
-                let state = folder.Invoke (state, n)
-
-                // Fold over the right subtree.
-                foldRec folder state r cont
-
-    /// Applies the given accumulating function to all elements in an AVL tree.
-    let fold (folder : 'State -> _ -> 'State) (state : 'State) (tree : MapTree<'T>) =
-        // Call the recursive, CPS-based implementation.
-        let folder = FSharpFunc<_,_,_>.Adapt folder
-        foldRec folder state tree id
-
-    /// Implementation.
-    /// Applies the given accumulating function to all elements in an AVL tree.
-    let rec private foldBackRec (folder : FSharpFunc<_, 'State, 'State>) (tree : MapTree<'T>) (state : 'State) cont =
-        match tree with
-        | Empty ->
-            cont state
-        | Node (l, r, n, _) ->
-            // Fold over the right subtree first.
-            foldBackRec folder r state <| fun state ->
-                // Apply the folder function to this node's value.
-                let state = folder.Invoke (n, state)
-
-                // Fold backwards over the left subtree.
-                foldBackRec folder l state cont
-
-    /// Applies the given accumulating function to all elements in an AVL tree.
-    let foldBack (folder : _ -> 'State -> 'State) (tree : MapTree<'T>) (state : 'State) =
-        // Call the recursive, CPS-based implementation.
-        let folder = FSharpFunc<_,_,_>.Adapt folder
-        foldBackRec folder tree state id
-
-    /// Implementation.
-    /// Applies the given accumulating function to all elements in an AVL tree.
-    let rec private iterRec (action : _ -> unit) (tree : MapTree<'T>) cont =
-        match tree with
-        | Empty ->
-            cont ()
-        | Node (l, r, n, _) ->
-            // Iterate over the left subtree first.
-            iterRec action l <| fun () ->
-                // Apply the action to this node's value.
-                action n
-
-                // Iterate over the right subtree.
-                iterRec action r cont
-
-    /// Applies the given function to each element stored in
-    /// an AVL tree, in order from least to greatest.
-    let iter (action : _ -> unit) (tree : MapTree<'T>) =
-        iterRec action tree id
+            elif comparison < 0 then                            // x < k
+                MapTree.mkt_bal_l n (MapTree.Insert (key, value) l) r
+            else                                                // x > k
+                MapTree.mkt_bal_r n l (MapTree.Insert (key, value) r)
 
     /// Counts the number of elements in the tree.
-    let count (tree : MapTree<'T>) =
-        (0, tree)
-        ||> fold (fun count _ ->
-            count + 1)
-
-    /// Extracts the minimum (least) value from an AVL tree,
-    /// returning the value along with the updated tree.
-    let rec extractMin (tree : MapTree<'T>) =
+    static member Count (tree : MapTree<'Key, 'Value>) =
         match tree with
-        | Empty ->
-            invalidArg "tree" "The tree is empty."
-        | Node (Empty, r, n, _) ->
-            n, r
-        | Node (Node (left, mid, a, _), r, x, _) ->
-            // Rebalance the tree at the same time we're traversing downwards
-            // to find the minimum value. This avoids the need to perform a
-            // second traversal to remove the element once it's found.
-            let n = create x mid r
-            create a left n
-            |> extractMin
+        | Empty -> 0u
+        | Node (Empty, Empty, _, _) -> 1u
+        | Node (l, r, _, _) ->
+            /// Mutable stack. Holds the trees which still need to be traversed.
+            let stack = Stack (defaultStackCapacity)
 
-    /// Extracts the minimum (least) value from an AVL tree,
-    /// returning the value along with the updated tree.
-    /// No exception is thrown if the tree is empty.
-    let tryExtractMin (tree : MapTree<'T>) =
-        // Is the tree empty?
-        if isEmpty tree then
-            None, tree
-        else
-            let minElement, tree = extractMin tree
-            Some minElement, tree
+            /// The number of elements discovered in the tree so far.
+            let mutable count = 1u   // Start at one (1) to include this root node.
 
-    /// Extracts the maximum (greatest) value from an AVL tree,
-    /// returning the value along with the updated tree.
-    let rec extractMax (tree : MapTree<'T>) =
+            // Traverse the tree using the mutable stack, incrementing the counter at each node.
+            stack.Push r
+            stack.Push l
+
+            while stack.Count > 0 do
+                match stack.Pop () with
+                | Empty -> ()
+                (* OPTIMIZATION: Handle a few of the cases specially here to avoid pushing empty
+                   nodes on the stack. *)
+                | Node (Empty, Empty, _, _) ->
+                    // Increment the element count.
+                    count <- count + 1u
+
+                | Node (Empty, z, _, _)
+                | Node (z, Empty, _, _) ->
+                    // Increment the element count.
+                    count <- count + 1u
+
+                    // Push the non-empty child onto the stack.
+                    stack.Push z
+
+                | Node (l, r, _, _) ->
+                    // Increment the element count.
+                    count <- count + 1u
+
+                    // Push the children onto the stack.
+                    stack.Push r
+                    stack.Push l
+
+            // Return the element count.
+            count
+
+    //
+    static member Iter (action : 'Key -> 'Value -> unit) (tree : MapTree<'Key, 'Value>) : unit =
         match tree with
-        | Empty ->
-            invalidArg "tree" "The tree is empty."
-        | Node (l, Empty, n, _) ->
-            n, l
-        | Node (l, Node (mid, right, a, _), x, _) ->
-            // Rebalance the tree at the same time we're traversing downwards
-            // to find the maximum value. This avoids the need to perform a
-            // second traversal to remove the element once it's found.
-            let n = create x l mid
-            create a n right
-            |> extractMax
+        | Empty -> ()
+        | Node (Empty, Empty, (k, v), _) ->
+            // Invoke the action with this single element.
+            action k v
+        | Node (l, r, (k, v), _) ->
+            // Adapt the action function since we'll always supply all of the arguments at once.
+            let action = FSharpFunc<_,_,_>.Adapt action
 
-    /// Extracts the maximum (greatest) value from an AVL tree,
-    /// returning the value along with the updated tree.
-    /// No exception is thrown if the tree is empty.
-    let tryExtractMax (tree : MapTree<'T>) =
-        // Is the tree empty?
-        if isEmpty tree then
-            None, tree
-        else
-            let maxElement, tree = extractMax tree
-            Some maxElement, tree
+            /// Mutable stack. Holds the trees which still need to be traversed.
+            let stack = Stack (defaultStackCapacity)
 
-    /// Merges two AVL trees and returns the result.
-    let union (tree1 : MapTree<'T>) (tree2 : MapTree<'T>) =
-        let tree1_count = count tree1
-        let tree2_count = count tree2
+            // Traverse the tree using the mutable stack, applying the folder function to
+            // each value to update the state value.
+            stack.Push r
+            stack.Push <| MapTree.Singleton k v
+            stack.Push l
 
-        // Merge the smaller set into the larger set.
-        if tree1_count < tree2_count then
-            (tree2, tree1)
-            ||> fold (fun tree el ->
-                insert el tree)
-        else
-            (tree1, tree2)
-            ||> fold (fun tree el ->
-                insert el tree)
+            while stack.Count > 0 do
+                match stack.Pop () with
+                | Empty -> ()
+                | Node (Empty, Empty, (k, v), _) ->
+                    // Apply this value to the action function.
+                    action.Invoke (k, v)
 
-    /// Builds a new AVL tree from the elements of a sequence.
-    let ofSeq (sequence : seq<_>) : MapTree<'T> =
+                | Node (Empty, z, (k, v), _) ->
+                    // Apply this value to the action function.
+                    action.Invoke (k, v)
+
+                    // Push the non-empty child onto the stack.
+                    stack.Push z
+
+                | Node (l, r, (k, v), _) ->
+                    // Push the children onto the stack.
+                    // Also push a new Node onto the stack which contains the value from
+                    // this Node, so it'll be processed in the correct order.
+                    stack.Push r
+                    stack.Push <| MapTree.Singleton k v
+                    stack.Push l
+
+    /// Applies the given accumulating function to all elements in a MapTree.
+    static member Fold (folder : 'State -> 'Key -> 'Value -> 'State) (state : 'State) (tree : MapTree<'Key, 'Value>) =
+        match tree with
+        | Empty -> state
+        | Node (Empty, Empty, (k, v), _) ->
+            // Invoke the folder function on this single element and return the result.
+            folder state k v
+        | Node (l, r, (k, v), _) ->
+            // Adapt the folder function since we'll always supply all of the arguments at once.
+            let folder = FSharpFunc<_,_,_,_>.Adapt folder
+
+            /// Mutable stack. Holds the trees which still need to be traversed.
+            let stack = Stack (defaultStackCapacity)
+
+            /// The current state value.
+            let mutable state = state
+
+            // Traverse the tree using the mutable stack, applying the folder function to
+            // each value to update the state value.
+            stack.Push r
+            stack.Push <| MapTree.Singleton k v
+            stack.Push l
+
+            while stack.Count > 0 do
+                match stack.Pop () with
+                | Empty -> ()
+                | Node (Empty, Empty, (k, v), _) ->
+                    // Apply this value to the folder function.
+                    state <- folder.Invoke (state, k, v)
+
+                | Node (Empty, z, (k, v), _) ->
+                    // Apply this value to the folder function.
+                    state <- folder.Invoke (state, k, v)
+
+                    // Push the non-empty child onto the stack.
+                    stack.Push z
+
+                | Node (l, r, (k, v), _) ->
+                    // Push the children onto the stack.
+                    // Also push a new Node onto the stack which contains the value from
+                    // this Node, so it'll be processed in the correct order.
+                    stack.Push r
+                    stack.Push <| MapTree.Singleton k v
+                    stack.Push l
+
+            // Return the final state value.
+            state
+
+    /// Applies the given accumulating function to all elements in a MapTree.
+    static member FoldBack (folder : 'Key -> 'Value -> 'State -> 'State) (state : 'State) (tree : MapTree<'Key, 'Value>) =
+        match tree with
+        | Empty -> state
+        | Node (Empty, Empty, (k, v), _) ->
+            // Invoke the folder function on this single element and return the result.
+            folder k v state
+        | Node (l, r, (k, v), _) ->
+            // Adapt the folder function since we'll always supply all of the arguments at once.
+            let folder = FSharpFunc<_,_,_,_>.Adapt folder
+
+            /// Mutable stack. Holds the trees which still need to be traversed.
+            let stack = Stack (defaultStackCapacity)
+
+            /// The current state value.
+            let mutable state = state
+
+            // Traverse the tree using the mutable stack, applying the folder function to
+            // each value to update the state value.
+            stack.Push l
+            stack.Push <| MapTree.Singleton k v
+            stack.Push r
+
+            while stack.Count > 0 do
+                match stack.Pop () with
+                | Empty -> ()
+                | Node (Empty, Empty, (k, v), _) ->
+                    // Apply this value to the folder function.
+                    state <- folder.Invoke (k, v, state)
+
+                | Node (z, Empty, (k, v), _) ->
+                    // Apply this value to the folder function.
+                    state <- folder.Invoke (k, v, state)
+
+                    // Push the non-empty child onto the stack.
+                    stack.Push z
+
+                | Node (l, r, (k, v), _) ->
+                    // Push the children onto the stack.
+                    // Also push a new Node onto the stack which contains the value from
+                    // this Node, so it'll be processed in the correct order.
+                    stack.Push l
+                    stack.Push <| MapTree.Singleton k v
+                    stack.Push r
+
+            // Return the final state value.
+            state
+
+    /// Tests if any element of the collection satisfies the given predicate.
+    static member Exists (predicate : 'Key -> 'Value -> bool) (tree : MapTree<'Key, 'Value>) : bool =
+        match tree with
+        | Empty -> false
+        | Node (Empty, Empty, (k, v), _) ->
+            // Apply the predicate function to this element and return the result.
+            predicate k v
+        | Node (l, r, (k, v), _) ->
+            // Adapt the predicate since we'll always supply all of the arguments at once.
+            let predicate = FSharpFunc<_,_,_>.Adapt predicate
+
+            /// Mutable stack. Holds the trees which still need to be traversed.
+            let stack = Stack (defaultStackCapacity)
+
+            /// Have we found a matching element?
+            let mutable foundMatch = false
+
+            // Traverse the tree using the mutable stack, applying the folder function to
+            // each value to update the state value.
+            stack.Push r
+            stack.Push <| MapTree.Singleton k v
+            stack.Push l
+
+            while stack.Count > 0 && not foundMatch do
+                match stack.Pop () with
+                | Empty -> ()
+                | Node (Empty, Empty, (k, v), _) ->
+                    // Apply the predicate to this element.
+                    foundMatch <- predicate.Invoke (k, v)
+
+                | Node (Empty, z, (k, v), _) ->
+                    // Apply the predicate to this element.
+                    foundMatch <- predicate.Invoke (k, v)
+
+                    // Push the non-empty child onto the stack.
+                    stack.Push z
+
+                | Node (l, r, (k, v), _) ->
+                    // Push the children onto the stack.
+                    // Also push a new Node onto the stack which contains the value from
+                    // this Node, so it'll be processed in the correct order.
+                    stack.Push r
+                    stack.Push <| MapTree.Singleton k v
+                    stack.Push l
+
+            // Return the value indicating whether or not a matching element was found.
+            foundMatch
+
+    /// Tests if all elements of the collection satisfy the given predicate.
+    static member Forall (predicate : 'Key -> 'Value -> bool) (tree : MapTree<'Key, 'Value>) : bool =
+        match tree with
+        | Empty -> true
+        | Node (Empty, Empty, (k, v), _) ->
+            // Apply the predicate function to this element and return the result.
+            predicate k v
+        | Node (l, r, (k, v), _) ->
+            // Adapt the predicate since we'll always supply all of the arguments at once.
+            let predicate = FSharpFunc<_,_,_>.Adapt predicate
+
+            /// Mutable stack. Holds the trees which still need to be traversed.
+            let stack = Stack (defaultStackCapacity)
+
+            /// Have all of the elements we've seen so far matched the predicate?
+            let mutable allElementsMatch = true
+
+            // Traverse the tree using the mutable stack, applying the folder function to
+            // each value to update the state value.
+            stack.Push r
+            stack.Push <| MapTree.Singleton k v
+            stack.Push l
+
+            while stack.Count > 0 && allElementsMatch do
+                match stack.Pop () with
+                | Empty -> ()
+                | Node (Empty, Empty, (k, v), _) ->
+                    // Apply the predicate to this element.
+                    allElementsMatch <- predicate.Invoke (k, v)
+
+                | Node (Empty, z, (k, v), _) ->
+                    // Apply the predicate to this element.
+                    allElementsMatch <- predicate.Invoke (k, v)
+
+                    // Push the non-empty child onto the stack.
+                    stack.Push z
+
+                | Node (l, r, (k, v), _) ->
+                    // Push the children onto the stack.
+                    // Also push a new Node onto the stack which contains the value from
+                    // this Node, so it'll be processed in the correct order.
+                    stack.Push r
+                    stack.Push <| MapTree.Singleton k v
+                    stack.Push l
+
+            // Return the value indicating if all elements matched the predicate.
+            allElementsMatch
+
+    /// Builds a new MapTree from the elements of a sequence.
+    static member OfSeq (sequence : seq<_>) : MapTree<'Key, 'Value> =
         (Empty, sequence)
         ||> Seq.fold (fun tree el ->
-            insert el tree)
+            MapTree.Insert el tree)
 
-    /// Builds a new AVL tree from the elements of an F# list.
-    let ofList (list : _ list) : MapTree<'T> =
+    /// Builds a new MapTree from the elements of an list.
+    static member OfList (list : _ list) : MapTree<'Key, 'Value> =
         (Empty, list)
         ||> List.fold (fun tree el ->
-            insert el tree)
+            MapTree.Insert el tree)
 
-    /// Builds a new AVL tree from the elements of an array.
-    let ofArray (array : _[]) : MapTree<'T> =
+    /// Builds a new MapTree from the elements of an array.
+    static member OfArray (array : _[]) : MapTree<'Key, 'Value> =
         (Empty, array)
         ||> Array.fold (fun tree el ->
-            insert el tree)
+            MapTree.Insert el tree)
 
-    /// Returns a sequence containing the elements stored
-    /// in an AVL tree, ordered from least to greatest.
-    let rec toSeq (tree : MapTree<'T>) =
-        seq {
-        match tree with
-        | Empty -> ()
-        | Node (l, r, n, _) ->
-            yield! toSeq l
-            yield n
-            yield! toSeq r
-        }
+    (* NOTE : This works, but has been disabled for now because the existing F# Map
+                implementation uses a custom IEnumerator implementation which has different
+                characteristics; the unit tests expect to see these, so that implementation
+                is used instead of this one (at least for now). *)
+//    /// Returns a sequence containing the elements stored
+//    /// in a MapTree, ordered from least to greatest.
+//    static member ToSeq (tree : MapTree<'Key, 'Value>) =
+//        seq {
+//        match tree with
+//        | Empty -> ()
+//        | Node (l, r, n, _) ->
+//            yield! MapTree.ToSeq l
+//            yield n
+//            yield! MapTree.ToSeq r
+//        }
 
-    /// Returns a sequence containing the elements stored in
-    /// an AVL tree, ordered from greatest to least.
-    let rec toSeqRev (tree : MapTree<'T>) =
-        seq {
-        match tree with
-        | Empty -> ()
-        | Node (l, r, n, _) ->
-            yield! toSeq r
-            yield n
-            yield! toSeq l
-        }
-    
-    /// Returns an F# list containing the elements stored in
-    /// an AVL tree, ordered from least to greatest. 
-    let toList (tree : MapTree<'T>) =
-        (tree, [])
-        ||> foldBack (fun el lst ->
-            el :: lst)
-
-    /// Returns an F# list containing the elements stored in
-    /// an AVL tree, ordered from greatest to least.
-    let toListRev (tree : MapTree<'T>) =
+    /// Returns a list containing the elements stored in
+    /// a MapTree, ordered from least to greatest. 
+    static member ToList (tree : MapTree<'Key, 'Value>) =
         ([], tree)
-        ||> fold (fun lst el ->
-            el :: lst)
+        ||> MapTree.FoldBack (fun key value lst ->
+            (key, value) :: lst)
 
     /// Returns an array containing the elements stored in
-    /// an AVL tree, ordered from least to greatest.
-    let toArray (tree : MapTree<'T>) =
+    /// a MapTree, ordered from least to greatest.
+    static member ToArray (tree : MapTree<'Key, 'Value>) =
         let elements = ResizeArray ()
-        iter elements.Add tree
+        tree |> MapTree.Iter (fun key value ->
+            elements.Add (key, value))
         elements.ToArray ()
+
+    static member private CompareStacks (l1 : MapTree<'Key, 'Value> list, l2 : MapTree<'Key, 'Value> list) : int =
+        match l1, l2 with
+        | [], [] -> 0
+        | [], _ -> -1
+        | _, [] -> 1
+        | (Empty :: t1), (Empty :: t2) ->
+            MapTree.CompareStacks (t1, t2)
+        | (Node (Empty, Empty, (n1k, n1v), _) :: t1), (Node (Empty, Empty, (n2k, n2v), _) :: t2) ->
+            match compare n1k n2k with
+            | 0 ->
+                MapTree.CompareStacks (t1, t2)
+            | c -> c
+
+        | (Node (Empty, Empty, (n1k, n1v), _) :: t1), (Node (Empty, n2r, (n2k, n2v), _) :: t2) ->
+            match compare n1k n2k with
+            | 0 ->
+                MapTree.CompareStacks (Empty :: t1, n2r :: t2)
+            | c -> c
+
+        | (Node (Empty, n1r, (n1k, n1v), _) :: t1), (Node (Empty, Empty, (n2k, n2v), _) :: t2) ->
+            match compare n1k n2k with
+            | 0 ->
+                MapTree.CompareStacks (n1r :: t1, Empty :: t2)
+            | c -> c
+
+        | (Node (Empty, n1r, (n1k, n1v), _) :: t1), (Node (Empty, n2r, (n2k, n2v), _) :: t2) ->
+            match compare n1k n2k with
+            | 0 ->
+                MapTree.CompareStacks (n1r :: t1, n2r :: t2)
+            | c -> c
+
+        | ((Node (Empty, Empty, (n1k, n1v), _) :: t1) as l1), _ ->
+            MapTree.CompareStacks (Empty :: l1, l2)
+        
+        | (Node (n1l, n1r, n1kv, _) :: t1), _ ->
+            MapTree.CompareStacks (n1l :: Node (Empty, n1r, n1kv, 0u) :: t1, l2)
+        
+        | _, ((Node (Empty, Empty, n2kv, _) :: t2) as l2) ->
+            MapTree.CompareStacks (l1, Empty :: l2)
+        
+        | _, (Node (n2l, n2r, n2kv, _) :: t2) ->
+            MapTree.CompareStacks (l1, n2l :: Node (Empty, n2r, n2kv, 0u) :: t2)
+                
+    static member Compare (s1 : MapTree<'Key, 'Value>, s2 : MapTree<'Key, 'Value>) : int =
+        match s1, s2 with
+        | Empty, Empty -> 0
+        | Empty, _ -> -1
+        | _, Empty -> 1
+        | _ ->
+            MapTree<'Key, 'Value>.CompareStacks ([s1], [s2])
+
+(*** Imperative left-to-right iterators. ***)
+
+[<NoEquality; NoComparison>]
+type internal MapIterator<'Key, 'Value when 'Key : comparison> = {
+    // invariant: always collapseLHS result
+    mutable stack: MapTree<'Key, 'Value> list;
+    // true when MoveNext has been called
+    mutable started : bool;
+} with
+    // collapseLHS:
+    // a) Always returns either [] or a list starting with a 'leaf' node.
+    // b) The "fringe" of the set stack is unchanged.
+    static member private CollapseLHS stack =
+        match stack with
+        | [] -> []
+        | Empty :: rest ->
+            MapIterator<'Key, 'Value>.CollapseLHS rest
+        | Node (Empty, Empty, _, _) :: _ ->
+            stack
+        | Node (l, r, n, _) :: rest ->
+            MapIterator<'Key, 'Value>.CollapseLHS (l :: (Node (Empty, Empty, n, 0u)) :: r :: rest)
+
+    //
+    static member private MkIterator (s : MapTree<'Key, 'Value>) = {
+        stack = MapIterator<'Key, 'Value>.CollapseLHS [s];
+        started = false; }
+
+    //
+    static member private Current i =
+        if i.started then
+            match i.stack with
+            | [] ->
+                //raise (new System.InvalidOperationException(SR.GetString(SR.enumerationAlreadyFinished)))
+                invalidOp "enumerationAlreadyFinished"
+            | Node (Empty, Empty, (k, v), _) :: _ ->
+                KeyValuePair<_,_> (k, v)
+            | _ -> failwith "Please report error: Map iterator, unexpected stack for current"
+        else
+            //raise (new System.InvalidOperationException(SR.GetString(SR.enumerationNotStarted)))
+            invalidOp "enumerationNotStarted"
+
+    //
+    static member private MoveNext i =
+        if i.started then
+            match i.stack with
+            | Node (Empty, Empty, _, _) :: rest ->
+                i.stack <- MapIterator<'Key, 'Value>.CollapseLHS rest
+                not i.stack.IsEmpty
+            | [] -> false
+            | _ -> failwith "Please report error: Map iterator, unexpected stack for moveNext"
+        else
+            i.started <- true       // The first call to MoveNext "starts" the enumeration.
+            not i.stack.IsEmpty
+
+    //
+    static member mkIEnumerator (m : MapTree<'Key, 'Value>) =
+        let i = ref (MapIterator.MkIterator m)
+        { new System.Collections.Generic.IEnumerator<_> with
+                member __.Current =
+                    MapIterator<'Key, 'Value>.Current !i
+            interface System.Collections.IEnumerator with
+                member __.Current =
+                    box <| MapIterator<'Key, 'Value>.Current !i
+                member __.MoveNext () =
+                    MapIterator<'Key, 'Value>.MoveNext !i
+                member __.Reset () =
+                    i := MapIterator<'Key, 'Value>.MkIterator m
+            interface System.IDisposable with
+                member __.Dispose () = () }
+
+(*
+//
+[<Sealed; CompiledName("FSharpMap`2")>]
+#if FX_NO_DEBUG_PROXIES
+#else
+[<DebuggerTypeProxy(typedefof<SetDebugView<_>>)>]
+#endif
+#if FX_NO_DEBUG_DISPLAYS
+#else
+[<DebuggerDisplay("Count = {Count}")>]
+#endif
+[<CodeAnalysis.SuppressMessage("Microsoft.Naming", "CA1710:IdentifiersShouldHaveCorrectSuffix")>]
+type Map<[<EqualityConditionalOn>] 'T when 'T : comparison> private (tree : MapTree<'Key, 'Value>) =
+    // We use .NET generics per-instantiation static fields to avoid allocating a new object for each empty
+    // set (it is just a lookup into a .NET table of type-instantiation-indexed static fields).
+    /// The empty set instance.
+    static let empty : Set<'T> = Set Empty
+
+#if FX_NO_BINARY_SERIALIZATION
+#else
+    // NOTE: This type is logically immutable. This field is only mutated during deserialization. 
+    //[<System.NonSerialized>]
+    //let mutable comparer : IComparer<'T> = null     // TODO : Can this be removed now? It's no longer used anywhere.
+
+    // NOTE: This type is logically immutable. This field is only mutated during deserialization. 
+    [<System.NonSerialized>]
+    let mutable tree = tree
+        
+    // NOTE: This type is logically immutable. This field is only mutated during serialization and deserialization. 
+    //
+    // WARNING: The compiled name of this field may never be changed because it is part of the logical 
+    // WARNING: permanent serialization format for this type.
+    let mutable serializedData = null
+#endif
+
+#if FX_NO_BINARY_SERIALIZATION
+#else
+    [<System.Runtime.Serialization.OnSerializingAttribute>]
+    member __.OnSerializing (_ : System.Runtime.Serialization.StreamingContext) =
+        //ignore(context)
+        serializedData <- MapTree.ToArray tree
+
+    // Do not set this to null, since concurrent threads may also be serializing the data
+    //[<System.Runtime.Serialization.OnSerializedAttribute>]
+    //member __.OnSerialized(context: System.Runtime.Serialization.StreamingContext) =
+    //    serializedData <- null
+
+    [<System.Runtime.Serialization.OnDeserializedAttribute>]
+    member __.OnDeserialized (_ : System.Runtime.Serialization.StreamingContext) =
+        //ignore(context)
+        //comparer <- LanguagePrimitives.FastGenericComparer<'T>
+        tree <- MapTree.OfArray serializedData
+        serializedData <- null
+#endif
+
+    /// The empty set instance.
+#if FX_NO_DEBUG_DISPLAYS
+#else
+    [<DebuggerBrowsable(DebuggerBrowsableState.Never)>]
+#endif
+    static member internal Empty =
+        empty
+
+    //
+    new (elements : seq<'T>) =
+        // Preconditions
+        // TODO : Check for null input.
+
+        // OPTIMIZE : Try to cast the sequence to array or list;
+        // if it succeeds use the specialized method for that type for better performance.
+        Set (MapTree.OfSeq elements)
+
+    //
+    member private __.Tree
+        with get () = tree
+
+    //
+    member __.Count
+        with get () =
+            int <| MapTree.Count tree
+
+    //
+    member __.IsEmpty
+        with get () =
+            match tree with
+            | Empty -> true
+            | Node (_,_,_,_) -> false
+
+    //
+#if FX_NO_DEBUG_DISPLAYS
+#else
+    [<DebuggerBrowsable(DebuggerBrowsableState.Never)>]
+#endif
+    member __.MinimumElement
+        with get () =
+            MapTree.MinElement tree
+
+    //
+#if FX_NO_DEBUG_DISPLAYS
+#else
+    [<DebuggerBrowsable(DebuggerBrowsableState.Never)>]
+#endif
+    member __.MaximumElement
+        with get () =
+            MapTree.MaxElement tree
+
+    //
+    member __.Contains (value : 'T) : bool =
+        MapTree.Contains value tree
+
+    //
+    member this.Add (value : 'T) : Set<'T> =
+        // Add the element to the MapTree; if the result is the same (i.e., the tree
+        // already contained the element), return this set instead of creating a new one.
+        let tree' = MapTree.Insert value tree
+        if System.Object.ReferenceEquals (tree, tree') then this
+        else Set (tree')
+
+    //
+    member this.Remove (value : 'T) : Set<'T> =
+        // Remove the element from the MapTree; if the result is the same (i.e., the tree
+        // did not contain the element), return this set instead of creating a new one.
+        let tree' = MapTree.Delete value tree
+        if System.Object.ReferenceEquals (tree, tree') then this
+        else Set (tree')
+
+    //
+    static member internal Singleton (value : 'T) : Set<'T> =
+        Set (MapTree.Singleton value)
+
+    //
+    static member internal Union (set1 : Set<'T>, set2 : Set<'T>) : Set<'T> =
+        // Compute the union of the trees.
+        // If the result is the same as either tree (i.e., one set was a subset of the other)
+        // return that tree's corresponding set instead of creating a new one.
+        let result = MapTree.Union (set1.Tree, set2.Tree)
+        if System.Object.ReferenceEquals (set1.Tree, result) then set1
+        elif System.Object.ReferenceEquals (set2.Tree, result) then set2
+        else Set (result)
+
+    //
+    static member internal Intersection (set1 : Set<'T>, set2 : Set<'T>) : Set<'T> =
+        // Compute the intersection of the trees.
+        // If the result is the same as either tree (i.e., one set was a subset of the other)
+        // return that tree's corresponding set instead of creating a new one.
+        let result = MapTree.Intersect (set1.Tree, set2.Tree)
+        if System.Object.ReferenceEquals (set1.Tree, result) then set1
+        elif System.Object.ReferenceEquals (set2.Tree, result) then set2
+        else Set (result)
+
+    //
+    static member internal Difference (set1 : Set<'T>, set2 : Set<'T>) : Set<'T> =
+        // Remove the elements in set2 from set1.
+        // If the result is the same as set1's tree (i.e., set2 did not contain any elements
+        // from set1), return set1 instead of creating a new set.
+        let result = MapTree.Difference (set1.Tree, set2.Tree)
+        if System.Object.ReferenceEquals (set1.Tree, result) then set1
+        else Set (result)
+
+    //
+    static member internal UnionMany (sets : seq<Set<'T>>) : Set<'T> =
+        // Preconditions
+        // TODO : Check input for null.
+
+        let combinedMapTree =
+            (MapTree.Empty, sets)
+            ||> Seq.fold (fun combinedMapTree set ->
+                MapTree.Union (combinedMapTree, set.Tree))
+
+        Set (combinedMapTree)
+
+    //
+    static member internal IntersectMany (sets : seq<Set<'T>>) : Set<'T> =
+        Seq.reduce (fun s1 s2 -> Set<_>.Intersection(s1,s2)) sets
+
+    //
+    static member internal FromSeq (sequence : seq<'T>) : Set<'T> =
+        // Preconditions
+        // TODO
+
+        Set (MapTree.OfSeq sequence)
+
+    //
+    static member internal FromList (list : 'T list) : Set<'T> =
+        // Preconditions
+        // TODO
+
+        Set (MapTree.OfList list)
+
+    //
+    static member internal FromArray (arr : 'T[]) : Set<'T> =
+        // Preconditions
+        // TODO
+
+        Set (MapTree.OfArray arr)
+
+    //
+    member internal this.ToSeq () : seq<'T> =
+        //MapTree.ToSeq tree
+        this :> seq<_>
+
+    //
+    member internal __.ToList () =
+        MapTree.ToList tree
+
+    //
+    member internal __.ToArray () =
+        MapTree.ToArray tree
+
+    //
+    static member op_Addition (set1 : Set<'T>, set2 : Set<'T>) : Set<'T> =
+        Set<'T>.Union (set1, set2)
+
+    //
+    static member op_Subtraction (set1 : Set<'T>, set2 : Set<'T>) : Set<'T> =
+        Set<'T>.Difference (set1, set2)
+
+    //
+    member __.IsSubsetOf (otherSet : Set<'T>) : bool =
+        MapTree.IsSubset (tree, otherSet.Tree)
+
+    //
+    member __.IsProperSubsetOf (otherSet : Set<'T>) : bool =
+        MapTree.IsProperSubset (tree, otherSet.Tree)
+
+    //
+    member __.IsSupersetOf (otherSet : Set<'T>) : bool =
+        MapTree.IsSubset (otherSet.Tree, tree)
+
+    //
+    member __.IsProperSupersetOf (otherSet : Set<'T>) : bool =
+        MapTree.IsProperSubset (otherSet.Tree, tree)
+
+    //
+    member internal __.Iterate (action : 'T -> unit) : unit =
+        MapTree.Iter action tree
+
+    //
+    member internal __.Exists (predicate : 'T -> bool) : bool =
+        MapTree.Exists predicate tree
+
+    //
+    member internal __.ForAll (predicate : 'T -> bool) : bool =
+        MapTree.Forall predicate tree
+
+    //
+    member internal __.Fold (folder : 'State -> 'T -> 'State) (state : 'State) : 'State =
+        MapTree.Fold folder state tree
+
+    //
+    member internal __.FoldBack (folder : 'T -> 'State -> 'State) (state : 'State) : 'State =
+        MapTree.FoldBack folder state tree
+
+    //
+    member internal __.Map (mapping : 'T -> 'U) : Set<'U> =
+        let mappedTree =
+            (MapTree.Empty, tree)
+            ||> MapTree.Fold (fun mappedTree el ->
+                MapTree.Insert (mapping el) mappedTree)
+
+        Set (mappedTree)
+
+    //
+    member internal __.Filter (predicate : 'T -> bool) : Set<'T> =
+        let filteredTree =
+            (tree, tree)
+            ||> MapTree.Fold (fun filteredTree el ->
+                if predicate el then filteredTree
+                else MapTree.Delete el filteredTree)
+
+        Set (filteredTree)
+
+    //
+    member internal this.Partition (predicate : 'T -> bool) : Set<'T> * Set<'T> =
+        let trueTree, falseTree =
+            ((tree, tree), tree)
+            ||> MapTree.Fold (fun (trueTree, falseTree) el ->
+                if predicate el then
+                    trueTree,
+                    MapTree.Delete el falseTree
+                else
+                    MapTree.Delete el trueTree,
+                    falseTree)
+
+        // If either of the 'true' or 'false' trees are equivalent to the input tree,
+        // return this set as one component of the returned tuple -- this avoids creating
+        // an additional set for no reason.
+        if System.Object.ReferenceEquals (tree, trueTree) then
+            this, empty
+        elif System.Object.ReferenceEquals (tree, falseTree) then
+            empty, this
+        else
+            Set (trueTree), Set (falseTree)
+
+    // OPTIMIZE : Instead of computing this repeatedly -- this type is immutable so we should
+    // lazily compute the hashcode once instead; however, we do need to account for the case
+    // where an instance is created via deserialization, so it may make sense to use a 'ref'
+    // field (which is excluded from serialization) with Interlocked.Exchange instead of using
+    // a 'lazy' value.
+    member __.ComputeHashCode () =
+        let inline combineHash x y = (x <<< 1) + y + 631
+        (0, tree)
+        ||> MapTree.Fold (fun res x ->
+            combineHash res (hash x))
+        |> abs
+
+    override this.GetHashCode () =
+        this.ComputeHashCode ()
+
+    // OPTIMIZE : Would it be significantly faster if we re-implemented this to work
+    // directly on the MapTrees instead of using enumerators? Or, at least using an
+    // imperative loop instead of a recursive function?
+    override this.Equals other =
+        match other with
+        | :? Set<'T> as other ->
+            use e1 = (this :> seq<_>).GetEnumerator ()
+            use e2 = (other :> seq<_>).GetEnumerator ()
+            let rec loop () =
+                let m1 = e1.MoveNext ()
+                let m2 = e2.MoveNext ()
+                (m1 = m2) && (not m1 || ((e1.Current = e2.Current) && loop ()))
+            loop ()
+        | _ -> false
+
+    override x.ToString () =
+        match List.ofSeq (Seq.truncate 4 x) with
+        | [] -> "set []"
+        | [h1] ->
+            System.Text.StringBuilder()
+                .Append("set [")
+                .Append(LanguagePrimitives.anyToStringShowingNull h1)
+                .Append("]")
+                .ToString()
+        | [h1; h2] ->
+            System.Text.StringBuilder()
+                .Append("set [")
+                .Append(LanguagePrimitives.anyToStringShowingNull h1)
+                .Append("; ")
+                .Append(LanguagePrimitives.anyToStringShowingNull h2)
+                .Append("]")
+                .ToString()
+        | [h1; h2; h3] ->
+            System.Text.StringBuilder()
+                .Append("set [")
+                .Append(LanguagePrimitives.anyToStringShowingNull h1)
+                .Append("; ")
+                .Append(LanguagePrimitives.anyToStringShowingNull h2)
+                .Append("; ")
+                .Append(LanguagePrimitives.anyToStringShowingNull h3)
+                .Append("]")
+                .ToString()
+        | h1 :: h2 :: h3 :: _ ->
+            System.Text.StringBuilder()
+                .Append("set [")
+                .Append(LanguagePrimitives.anyToStringShowingNull h1)
+                .Append("; ")
+                .Append(LanguagePrimitives.anyToStringShowingNull h2)
+                .Append("; ")
+                .Append(LanguagePrimitives.anyToStringShowingNull h3)
+                .Append("; ... ]")
+                .ToString()
+
+    interface System.IComparable with
+        /// <inherit />
+        member __.CompareTo other =
+            MapTree.Compare (tree, (other :?> Set<'T>).Tree)
+
+    interface System.Collections.IEnumerable with
+        /// <inherit />
+        member __.GetEnumerator () =
+//            (MapTree.ToSeq tree).GetEnumerator ()
+            SetIterator.mkIEnumerator tree
+            :> System.Collections.IEnumerator
+
+    interface IEnumerable<'T> with
+        /// <inherit />
+        member __.GetEnumerator () =
+            //(MapTree.ToSeq tree).GetEnumerator ()
+            SetIterator.mkIEnumerator tree
+
+    interface ICollection<'T> with
+        /// <inherit />
+        member __.Count
+            with get () =
+                int <| MapTree.Count tree
+
+        /// <inherit />
+        member __.IsReadOnly
+            with get () = true
+
+        /// <inherit />
+        member __.Add _ =
+            raise <| System.NotSupportedException "ReadOnlyCollection"
+
+        /// <inherit />
+        member __.Clear () =
+            raise <| System.NotSupportedException "ReadOnlyCollection"
+
+        /// <inherit />
+        member __.Contains (item : 'T) =
+            MapTree.Contains item tree
+
+        /// <inherit />
+        member this.CopyTo (array, arrayIndex) =
+            // Preconditions
+            if System.Object.ReferenceEquals (null, array) then
+                nullArg "array"
+            elif arrayIndex < 0 then
+                raise <| System.ArgumentOutOfRangeException "arrayIndex"
+
+            let count = int <| MapTree.Count tree
+            if arrayIndex + count > Array.length array then
+                invalidArg "arrayIndex"
+                    "There is not enough room in the array to copy the elements when starting at the specified index."
+
+            this.Fold (fun index el ->
+                array.[index] <- el
+                index + 1) arrayIndex
+            |> ignore
+
+        /// <inherit />
+        member __.Remove _ : bool =
+            raise <| System.NotSupportedException "ReadOnlyCollection"
+
+and [<Sealed>]
+    internal SetDebugView<'T when 'T : comparison> (set : Set<'T>) =
+
+#if FX_NO_DEBUG_DISPLAYS
+#else
+    [<DebuggerBrowsable(DebuggerBrowsableState.RootHidden)>]
+#endif
+    member __.Items
+        with get () : 'T[] =
+            //set |> Seq.truncate setDebugViewMaxElementCount |> Seq.toArray
+            set.ToArray ()
+
+//
+[<RequireQualifiedAccess; CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
+module Set =
+    [<CompiledName("IsEmpty")>]
+    let (*inline*) isEmpty (s : Set<'T>) = s.IsEmpty
+
+    [<CompiledName("Contains")>]
+    let (*inline*) contains x (s : Set<'T>) = s.Contains(x)
+
+    [<CompiledName("Add")>]
+    let (*inline*) add x (s : Set<'T>) = s.Add(x)
+
+    [<CompiledName("Singleton")>]
+    let singleton x = Set<'T>.Singleton(x)
+
+    [<CompiledName("Remove")>]
+    let (*inline*) remove x (s : Set<'T>) = s.Remove(x)
+
+    [<CompiledName("Union")>]
+    let (*inline*) union (s1 : Set<'T>) (s2 : Set<'T>) = s1 + s2
+
+    [<CompiledName("UnionMany")>]
+    let unionMany sets = Set<_>.UnionMany(sets)
+
+    [<CompiledName("Intersect")>]
+    let intersect (s1 : Set<'T>) (s2 : Set<'T>) = Set<'T>.Intersection(s1,s2)
+
+    [<CompiledName("IntersectMany")>]
+    let intersectMany sets = Set<_>.IntersectMany(sets)
+
+    [<CompiledName("Iterate")>]
+    let iter f (s : Set<'T>) = s.Iterate(f)
+
+    [<GeneralizableValue>]
+    [<CompiledName("Empty")>]
+    let empty<'T when 'T : comparison> : Set<'T> = Set<'T>.Empty
+
+    [<CompiledName("ForAll")>]
+    let forall f (s : Set<'T>) = s.ForAll f
+
+    [<CompiledName("Exists")>]
+    let exists f (s : Set<'T>) = s.Exists f
+
+    [<CompiledName("Filter")>]
+    let filter f (s : Set<'T>) = s.Filter f
+
+    [<CompiledName("Partition")>]
+    let partition f (s : Set<'T>) = s.Partition f 
+
+    [<CompiledName("Fold")>]
+    let fold<'T, 'State when 'T : comparison> f (z : 'State) (s : Set<'T>) = s.Fold f z
+
+    [<CompiledName("FoldBack")>]
+    let foldBack<'T, 'State when 'T : comparison> f (s : Set<'T>) (z : 'State) = s.FoldBack f z
+
+    [<CompiledName("Map")>]
+    let map f (s : Set<'T>) = s.Map f
+
+    [<CompiledName("Count")>]
+    let count (s : Set<'T>) = s.Count
+
+    [<CompiledName("MinumumElement")>]
+    let minimumElement (s : Set<'T>) = s.MinimumElement
+
+    [<CompiledName("MaximumElement")>]
+    let maximumElement (s : Set<'T>) = s.MaximumElement
+
+    [<CompiledName("OfList")>]
+    let ofList l = Set<_>.FromList l
+
+    [<CompiledName("OfArray")>]
+    let ofArray (l : 'T array) = Set<'T>.FromArray l
+
+    [<CompiledName("ToList")>]
+    let toList (s : Set<'T>) = s.ToList()
+ 
+    [<CompiledName("ToArray")>]
+    let toArray (s : Set<'T>) = s.ToArray()
+
+    [<CompiledName("ToSeq")>]
+    let (*inline*) toSeq (s : Set<'T>) : seq<'T> =
+        //s.ToSeq ()
+        (s :> seq<_>)
+
+    [<CompiledName("OfSeq")>]
+    let ofSeq (c : seq<_>) = Set<_>.FromSeq c
+
+    [<CompiledName("Difference")>]
+    let (*inline*) difference (s1: Set<'T>) (s2: Set<'T>) = s1 - s2
+
+    [<CompiledName("IsSubset")>]
+    let (*inline*) isSubset (x:Set<'T>) (y: Set<'T>) =
+        x.IsSubsetOf y
+
+    [<CompiledName("IsSuperset")>]
+    let (*inline*) isSuperset (x:Set<'T>) (y: Set<'T>) =
+        x.IsSupersetOf y
+
+    [<CompiledName("IsProperSubset")>]
+    let (*inline*) isProperSubset (x:Set<'T>) (y: Set<'T>) =
+        x.IsProperSubsetOf y
+
+    [<CompiledName("IsProperSuperset")>]
+    let (*inline*) isProperSuperset (x:Set<'T>) (y: Set<'T>) =
+        x.IsProperSupersetOf y
+
+    [<CompiledName("MinElement")>]
+    let (*inline*) minElement (s : Set<'T>) = s.MinimumElement
+
+    [<CompiledName("MaxElement")>]
+    let (*inline*) maxElement (s : Set<'T>) = s.MaximumElement
+
+*)
