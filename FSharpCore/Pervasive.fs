@@ -22,6 +22,10 @@ namespace FSharpCore
 module internal Constants =
     //
     let [<Literal>] defaultStackCapacity = 16
+    //
+    let [<Literal>] setDebugViewMaxElementCount = 1000
+
+
 
 // Taken from 'src/fsharp/FSharp.Core/prim-types.fs';
 // these functions are needed for the ToString() overrides of the Set and Map types.

@@ -60,7 +60,7 @@ type internal SetTree<'T when 'T : comparison> =
         
     /// Determines if a SetTree is correctly formed.
     /// It isn't necessary to call this at run-time, though it may be useful for asserting
-    /// the correctness of functions which weren't extracted from the Isabelle theory.
+    /// the correctness of functions which weren't extracted from the Isabelle/HOL theory.
     static member private AvlInvariant (tree : SetTree<'T>) =
         match tree with
         | Empty -> true
@@ -218,6 +218,10 @@ type internal SetTree<'T when 'T : comparison> =
         | Node ((Node (_,_,_,_) as left), _, _, _) ->
             SetTree.MinElement left
 
+(* NOTE :   The next few methods have been commented-out because they're not provided by the
+            standard F# Set type. Anyone using a custom FSharp.Core implementation is welcome
+            to uncomment and use these methods. *)
+(*
     /// Extracts the minimum (least) value from a SetTree,
     /// returning the value along with the updated tree.
     static member ExtractMin (tree : SetTree<'T>) =
@@ -271,6 +275,7 @@ type internal SetTree<'T when 'T : comparison> =
         else
             let maxElement, tree = SetTree.ExtractMax tree
             Some maxElement, tree
+*)
 
     /// Counts the number of elements in the tree.
     static member Count (tree : SetTree<'T>) =
@@ -451,7 +456,7 @@ type internal SetTree<'T when 'T : comparison> =
             // Return the final state value.
             state
 
-    //
+    /// Tests if any element of the collection satisfies the given predicate.
     static member Exists (predicate : 'T -> bool) (tree : SetTree<'T>) : bool =
         match tree with
         | Empty -> false
@@ -496,7 +501,7 @@ type internal SetTree<'T when 'T : comparison> =
             // Return the value indicating whether or not a matching element was found.
             foundMatch
 
-    //
+    /// Tests if all elements of the collection satisfy the given predicate.
     static member Forall (predicate : 'T -> bool) (tree : SetTree<'T>) : bool =
         match tree with
         | Empty -> true
@@ -559,17 +564,21 @@ type internal SetTree<'T when 'T : comparison> =
         ||> Array.fold (fun tree el ->
             SetTree.Insert el tree)
 
-    /// Returns a sequence containing the elements stored
-    /// in a SetTree, ordered from least to greatest.
-    static member ToSeq (tree : SetTree<'T>) =
-        seq {
-        match tree with
-        | Empty -> ()
-        | Node (l, r, n, _) ->
-            yield! SetTree.ToSeq l
-            yield n
-            yield! SetTree.ToSeq r
-        }
+    (* NOTE : This works, but has been disabled for now because the existing F# Set
+                implementation uses a custom IEnumerator implementation which has different
+                characteristics; the unit tests expect to see these, so that implementation
+                is used instead of this one (at least for now). *)
+//    /// Returns a sequence containing the elements stored
+//    /// in a SetTree, ordered from least to greatest.
+//    static member ToSeq (tree : SetTree<'T>) =
+//        seq {
+//        match tree with
+//        | Empty -> ()
+//        | Node (l, r, n, _) ->
+//            yield! SetTree.ToSeq l
+//            yield n
+//            yield! SetTree.ToSeq r
+//        }
 
     /// Returns a list containing the elements stored in
     /// a SetTree, ordered from least to greatest. 
@@ -642,44 +651,48 @@ type internal SetTree<'T when 'T : comparison> =
         SetTree.Forall (fun x -> SetTree.Contains x b) a
         && SetTree.Exists (fun x -> not (SetTree.Contains x a)) b
 
-    static member private CompareStacks (l1 : SetTree<'T> list) (l2 : SetTree<'T> list) : int =
+    static member private CompareStacks (l1 : SetTree<'T> list, l2 : SetTree<'T> list) : int =
         match l1, l2 with
         | [], [] -> 0
         | [], _ -> -1
         | _, [] -> 1
-        | (Empty :: t1),(Empty :: t2) ->
-            SetTree.CompareStacks t1 t2
+        | (Empty :: t1), (Empty :: t2) ->
+            SetTree.CompareStacks (t1, t2)
         | (Node (Empty, Empty, n1k, _) :: t1), (Node (Empty, Empty, n2k, _) :: t2) ->
-            let c = compare n1k n2k
-            if c <> 0 then c
-            else SetTree.CompareStacks t1 t2
+            match compare n1k n2k with
+            | 0 ->
+                SetTree.CompareStacks (t1, t2)
+            | c -> c
 
         | (Node (Empty, Empty, n1k, _) :: t1), (Node (Empty, n2r, n2k, _) :: t2) ->
-            let c = compare n1k n2k
-            if c <> 0 then c
-            else SetTree.CompareStacks (Empty :: t1) (n2r :: t2)
+            match compare n1k n2k with
+            | 0 ->
+                SetTree.CompareStacks (Empty :: t1, n2r :: t2)
+            | c -> c
 
-        | (Node ((Empty as emp), n1r, n1k, _) :: t1), (Node (Empty, Empty, n2k, _) :: t2) ->
-            let c = compare n1k n2k
-            if c <> 0 then c
-            else SetTree.CompareStacks (n1r :: t1) (emp :: t2)
+        | (Node (Empty, n1r, n1k, _) :: t1), (Node (Empty, Empty, n2k, _) :: t2) ->
+            match compare n1k n2k with
+            | 0 ->
+                SetTree.CompareStacks (n1r :: t1, Empty :: t2)
+            | c -> c
 
         | (Node (Empty, n1r, n1k, _) :: t1), (Node (Empty, n2r, n2k, _) :: t2) ->
-            let c = compare n1k n2k
-            if c <> 0 then c
-            else SetTree.CompareStacks (n1r :: t1) (n2r :: t2)
+            match compare n1k n2k with
+            | 0 ->
+                SetTree.CompareStacks (n1r :: t1, n2r :: t2)
+            | c -> c
 
         | ((Node (Empty, Empty, n1k, _) :: t1) as l1), _ ->
-            SetTree.CompareStacks (Empty :: l1) l2
+            SetTree.CompareStacks (Empty :: l1, l2)
         
         | (Node (n1l, n1r, n1k, _) :: t1), _ ->
-            SetTree.CompareStacks (n1l :: Node (Empty, n1r, n1k, 0u) :: t1) l2
+            SetTree.CompareStacks (n1l :: Node (Empty, n1r, n1k, 0u) :: t1, l2)
         
         | _, ((Node (Empty, Empty, n2k, _) :: t2) as l2) ->
-            SetTree.CompareStacks l1 (Empty :: l2)
+            SetTree.CompareStacks (l1, Empty :: l2)
         
         | _, (Node (n2l, n2r, n2k, _) :: t2) ->
-            SetTree.CompareStacks l1 (n2l :: Node (Empty, n2r, n2k, 0u) :: t2)
+            SetTree.CompareStacks (l1, n2l :: Node (Empty, n2r, n2k, 0u) :: t2)
                 
     static member Compare (s1 : SetTree<'T>, s2 : SetTree<'T>) : int =
         match s1, s2 with
@@ -687,59 +700,54 @@ type internal SetTree<'T when 'T : comparison> =
         | Empty, _ -> -1
         | _, Empty -> 1
         | _ ->
-            SetTree<'T>.CompareStacks [s1] [s2]
+            SetTree<'T>.CompareStacks ([s1], [s2])
 
 (*** Imperative left-to-right iterators. ***)
 
 [<NoEquality; NoComparison>]
-type internal SetIterator<'T> when 'T : comparison  = 
-    { mutable stack: SetTree<'T> list;  // invariant: always collapseLHS result 
-        mutable started : bool           // true when MoveNext has been called   
-    }
-
-[<RequireQualifiedAccess; CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
-module internal SetIterator =
-    open System.Collections
-    open System.Collections.Generic
-
+type internal SetIterator<'T when 'T : comparison> = {
+    // invariant: always collapseLHS result
+    mutable stack: SetTree<'T> list;
+    // true when MoveNext has been called
+    mutable started : bool;
+} with
     // collapseLHS:
-    // a) Always returns either [] or a list starting with SetOne.
+    // a) Always returns either [] or a list starting with a 'leaf' node.
     // b) The "fringe" of the set stack is unchanged.
-    let rec collapseLHS stack =
+    static member private CollapseLHS stack =
         match stack with
         | [] -> []
         | Empty :: rest ->
-            collapseLHS rest
+            SetIterator<'T>.CollapseLHS rest
         | Node (Empty, Empty, _, _) :: _ ->
             stack
-        | Node (l,r,k,_) :: rest ->
-            collapseLHS (l :: (Node (Empty, Empty, k, 0u)) :: r :: rest)
-          
-    let mkIterator s = {
-        stack = collapseLHS [s];
+        | Node (l, r, k, _) :: rest ->
+            SetIterator<'T>.CollapseLHS (l :: (Node (Empty, Empty, k, 0u)) :: r :: rest)
+
+    //
+    static member private MkIterator (s : SetTree<'T>) = {
+        stack = SetIterator<'T>.CollapseLHS [s];
         started = false; }
 
-    let notStarted () =
-        //raise (new System.InvalidOperationException(SR.GetString(SR.enumerationNotStarted)))
-        invalidOp "enumerationNotStarted"
-    let alreadyFinished () =
-        //raise (new System.InvalidOperationException(SR.GetString(SR.enumerationAlreadyFinished)))
-        invalidOp "enumerationAlreadyFinished"
-
-    let current i =
+    //
+    static member private Current i =
         if i.started then
             match i.stack with
+            | [] ->
+                //raise (new System.InvalidOperationException(SR.GetString(SR.enumerationAlreadyFinished)))
+                invalidOp "enumerationAlreadyFinished"
             | Node (Empty, Empty, k, _) :: _ -> k
-            | [] -> alreadyFinished ()
             | _ -> failwith "Please report error: Set iterator, unexpected stack for current"
         else
-            notStarted ()
+            //raise (new System.InvalidOperationException(SR.GetString(SR.enumerationNotStarted)))
+            invalidOp "enumerationNotStarted"
 
-    let rec moveNext i =
+    //
+    static member private MoveNext i =
         if i.started then
             match i.stack with
             | Node (Empty, Empty, _, _) :: rest ->
-                i.stack <- collapseLHS rest
+                i.stack <- SetIterator<'T>.CollapseLHS rest
                 not i.stack.IsEmpty
             | [] -> false
             | _ -> failwith "Please report error: Set iterator, unexpected stack for moveNext"
@@ -747,14 +755,19 @@ module internal SetIterator =
             i.started <- true       // The first call to MoveNext "starts" the enumeration.
             not i.stack.IsEmpty
 
-    let mkIEnumerator s =
-        let i = ref (mkIterator s)
-        { new IEnumerator<_> with
-                member __.Current = current !i
-            interface IEnumerator with
-                member __.Current = box (current !i)
-                member __.MoveNext () = moveNext !i
-                member __.Reset () = i := mkIterator s
+    //
+    static member mkIEnumerator (s : SetTree<'T>) =
+        let i = ref (SetIterator.MkIterator s)
+        { new System.Collections.Generic.IEnumerator<'T> with
+                member __.Current =
+                    SetIterator<'T>.Current !i
+            interface System.Collections.IEnumerator with
+                member __.Current =
+                    box <| SetIterator<'T>.Current !i
+                member __.MoveNext () =
+                    SetIterator<'T>.MoveNext !i
+                member __.Reset () =
+                    i := SetIterator<'T>.MkIterator s
             interface System.IDisposable with
                 member __.Dispose () = () }
 
@@ -771,10 +784,53 @@ module internal SetIterator =
 #endif
 [<CodeAnalysis.SuppressMessage("Microsoft.Naming", "CA1710:IdentifiersShouldHaveCorrectSuffix")>]
 type Set<[<EqualityConditionalOn>] 'T when 'T : comparison> private (tree : SetTree<'T>) =
+    // We use .NET generics per-instantiation static fields to avoid allocating a new object for each empty
+    // set (it is just a lookup into a .NET table of type-instantiation-indexed static fields).
     /// The empty set instance.
     static let empty : Set<'T> = Set Empty
 
+#if FX_NO_BINARY_SERIALIZATION
+#else
+    // NOTE: This type is logically immutable. This field is only mutated during deserialization. 
+    //[<System.NonSerialized>]
+    //let mutable comparer : IComparer<'T> = null     // TODO : Can this be removed now? It's no longer used anywhere.
+
+    // NOTE: This type is logically immutable. This field is only mutated during deserialization. 
+    [<System.NonSerialized>]
+    let mutable tree = tree
+        
+    // NOTE: This type is logically immutable. This field is only mutated during serialization and deserialization. 
+    //
+    // WARNING: The compiled name of this field may never be changed because it is part of the logical 
+    // WARNING: permanent serialization format for this type.
+    let mutable serializedData = null
+#endif
+
+#if FX_NO_BINARY_SERIALIZATION
+#else
+    [<System.Runtime.Serialization.OnSerializingAttribute>]
+    member __.OnSerializing (_ : System.Runtime.Serialization.StreamingContext) =
+        //ignore(context)
+        serializedData <- SetTree.ToArray tree
+
+    // Do not set this to null, since concurrent threads may also be serializing the data
+    //[<System.Runtime.Serialization.OnSerializedAttribute>]
+    //member __.OnSerialized(context: System.Runtime.Serialization.StreamingContext) =
+    //    serializedData <- null
+
+    [<System.Runtime.Serialization.OnDeserializedAttribute>]
+    member __.OnDeserialized (_ : System.Runtime.Serialization.StreamingContext) =
+        //ignore(context)
+        //comparer <- LanguagePrimitives.FastGenericComparer<'T>
+        tree <- SetTree.OfArray serializedData
+        serializedData <- null
+#endif
+
     /// The empty set instance.
+#if FX_NO_DEBUG_DISPLAYS
+#else
+    [<DebuggerBrowsable(DebuggerBrowsableState.Never)>]
+#endif
     static member internal Empty =
         empty
 
@@ -783,6 +839,8 @@ type Set<[<EqualityConditionalOn>] 'T when 'T : comparison> private (tree : SetT
         // Preconditions
         // TODO : Check for null input.
 
+        // OPTIMIZE : Try to cast the sequence to array or list;
+        // if it succeeds use the specialized method for that type for better performance.
         Set (SetTree.OfSeq elements)
 
     //
@@ -802,11 +860,19 @@ type Set<[<EqualityConditionalOn>] 'T when 'T : comparison> private (tree : SetT
             | Node (_,_,_,_) -> false
 
     //
+#if FX_NO_DEBUG_DISPLAYS
+#else
+    [<DebuggerBrowsable(DebuggerBrowsableState.Never)>]
+#endif
     member __.MinimumElement
         with get () =
             SetTree.MinElement tree
 
     //
+#if FX_NO_DEBUG_DISPLAYS
+#else
+    [<DebuggerBrowsable(DebuggerBrowsableState.Never)>]
+#endif
     member __.MaximumElement
         with get () =
             SetTree.MaxElement tree
@@ -902,8 +968,9 @@ type Set<[<EqualityConditionalOn>] 'T when 'T : comparison> private (tree : SetT
         Set (SetTree.OfArray arr)
 
     //
-    member internal __.ToSeq () =
-        SetTree.ToSeq tree
+    member internal this.ToSeq () : seq<'T> =
+        //SetTree.ToSeq tree
+        this :> seq<_>
 
     //
     member internal __.ToList () =
@@ -1095,12 +1162,12 @@ type Set<[<EqualityConditionalOn>] 'T when 'T : comparison> private (tree : SetT
             with get () = true
 
         /// <inherit />
-        member __.Add x =
-            raise <| System.NotSupportedException "Sets cannot be mutated."
+        member __.Add _ =
+            raise <| System.NotSupportedException "ReadOnlyCollection"
 
         /// <inherit />
         member __.Clear () =
-            raise <| System.NotSupportedException "Sets cannot be mutated."
+            raise <| System.NotSupportedException "ReadOnlyCollection"
 
         /// <inherit />
         member __.Contains (item : 'T) =
@@ -1125,8 +1192,8 @@ type Set<[<EqualityConditionalOn>] 'T when 'T : comparison> private (tree : SetT
             |> ignore
 
         /// <inherit />
-        member __.Remove item : bool =
-            raise <| System.NotSupportedException "Sets cannot be mutated."
+        member __.Remove _ : bool =
+            raise <| System.NotSupportedException "ReadOnlyCollection"
 
 and [<Sealed>]
     internal SetDebugView<'T when 'T : comparison> (set : Set<'T>) =
@@ -1137,6 +1204,7 @@ and [<Sealed>]
 #endif
     member __.Items
         with get () : 'T[] =
+            //set |> Seq.truncate setDebugViewMaxElementCount |> Seq.toArray
             set.ToArray ()
 
 //
@@ -1219,7 +1287,7 @@ module Set =
     let toArray (s : Set<'T>) = s.ToArray()
 
     [<CompiledName("ToSeq")>]
-    let toSeq (s : Set<'T>) : seq<'T> =
+    let (*inline*) toSeq (s : Set<'T>) : seq<'T> =
         //s.ToSeq ()
         (s :> seq<_>)
 
