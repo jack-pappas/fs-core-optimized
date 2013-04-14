@@ -22,3 +22,15 @@ namespace FSharpCore
 module internal Constants =
     //
     let [<Literal>] defaultStackCapacity = 16
+
+// Taken from 'src/fsharp/FSharp.Core/prim-types.fs';
+// these functions are needed for the ToString() overrides of the Set and Map types.
+[<AutoOpen>]
+module internal LanguagePrimitives =
+    let inline anyToString nullStr x = 
+        match box x with 
+        | null -> nullStr
+        | :? System.IFormattable as f -> f.ToString(null,System.Globalization.CultureInfo.InvariantCulture)
+        | obj ->  obj.ToString()
+
+    let anyToStringShowingNull x = anyToString "null" x

@@ -951,13 +951,43 @@ type Set<[<EqualityConditionalOn>] 'T when 'T : comparison> private (tree : SetT
             loop ()
         | _ -> false
 
-//    override x.ToString() = 
-//        match List.ofSeq (Seq.truncate 4 x) with 
-//        | [] -> "set []"
-//        | [h1] -> System.Text.StringBuilder().Append("set [").Append(LanguagePrimitives.anyToStringShowingNull h1).Append("]").ToString()
-//        | [h1;h2] -> System.Text.StringBuilder().Append("set [").Append(LanguagePrimitives.anyToStringShowingNull h1).Append("; ").Append(LanguagePrimitives.anyToStringShowingNull h2).Append("]").ToString()
-//        | [h1;h2;h3] -> System.Text.StringBuilder().Append("set [").Append(LanguagePrimitives.anyToStringShowingNull h1).Append("; ").Append(LanguagePrimitives.anyToStringShowingNull h2).Append("; ").Append(LanguagePrimitives.anyToStringShowingNull h3).Append("]").ToString()
-//        | h1 :: h2 :: h3 :: _ -> System.Text.StringBuilder().Append("set [").Append(LanguagePrimitives.anyToStringShowingNull h1).Append("; ").Append(LanguagePrimitives.anyToStringShowingNull h2).Append("; ").Append(LanguagePrimitives.anyToStringShowingNull h3).Append("; ... ]").ToString() 
+    override x.ToString () =
+        match List.ofSeq (Seq.truncate 4 x) with
+        | [] -> "set []"
+        | [h1] ->
+            System.Text.StringBuilder()
+                .Append("set [")
+                .Append(LanguagePrimitives.anyToStringShowingNull h1)
+                .Append("]")
+                .ToString()
+        | [h1; h2] ->
+            System.Text.StringBuilder()
+                .Append("set [")
+                .Append(LanguagePrimitives.anyToStringShowingNull h1)
+                .Append("; ")
+                .Append(LanguagePrimitives.anyToStringShowingNull h2)
+                .Append("]")
+                .ToString()
+        | [h1; h2; h3] ->
+            System.Text.StringBuilder()
+                .Append("set [")
+                .Append(LanguagePrimitives.anyToStringShowingNull h1)
+                .Append("; ")
+                .Append(LanguagePrimitives.anyToStringShowingNull h2)
+                .Append("; ")
+                .Append(LanguagePrimitives.anyToStringShowingNull h3)
+                .Append("]")
+                .ToString()
+        | h1 :: h2 :: h3 :: _ ->
+            System.Text.StringBuilder()
+                .Append("set [")
+                .Append(LanguagePrimitives.anyToStringShowingNull h1)
+                .Append("; ")
+                .Append(LanguagePrimitives.anyToStringShowingNull h2)
+                .Append("; ")
+                .Append(LanguagePrimitives.anyToStringShowingNull h3)
+                .Append("; ... ]")
+                .ToString()
 
     interface System.IComparable with
         /// <inherit />

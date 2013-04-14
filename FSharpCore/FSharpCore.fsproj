@@ -41,7 +41,7 @@
     <Reference Include="System.Numerics" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Constants.fs" />
+    <Compile Include="Pervasive.fs" />
     <Compile Include="Set.fs" />
     <Compile Include="Map.fs" />
   </ItemGroup>
