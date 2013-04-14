@@ -669,8 +669,8 @@ type internal MapIterator<'Key, 'Value when 'Key : comparison> = {
 type Map<[<EqualityConditionalOn>] 'Key, [<EqualityConditionalOn;ComparisonConditionalOn>] 'Value when 'Key : comparison>
     private (tree : MapTree<'Key, 'Value>) =
     // We use .NET generics per-instantiation static fields to avoid allocating a new object for each empty
-    // set (it is just a lookup into a .NET table of type-instantiation-indexed static fields).
-    /// The empty set instance.
+    // map (it is just a lookup into a .NET table of type-instantiation-indexed static fields).
+    /// The empty map instance.
     static let empty : Map<'Key, 'Value> = Map Empty
 
 #if FX_NO_BINARY_SERIALIZATION
@@ -688,14 +688,13 @@ type Map<[<EqualityConditionalOn>] 'Key, [<EqualityConditionalOn;ComparisonCondi
     // WARNING: The compiled name of this field may never be changed because it is part of the logical 
     // WARNING: permanent serialization format for this type.
     let mutable serializedData = null
-#endif
 
-#if FX_NO_BINARY_SERIALIZATION
-#else
     [<System.Runtime.Serialization.OnSerializingAttribute>]
     member __.OnSerializing (_ : System.Runtime.Serialization.StreamingContext) =
         //ignore(context)
-        serializedData <- MapTree.ToArray tree
+        serializedData <-
+            MapTree.ToArray tree
+            |> Array.map (fun (k, v) -> KeyValuePair (k, v))
 
     // Do not set this to null, since concurrent threads may also be serializing the data
     //[<System.Runtime.Serialization.OnSerializedAttribute>]
@@ -705,12 +704,17 @@ type Map<[<EqualityConditionalOn>] 'Key, [<EqualityConditionalOn;ComparisonCondi
     [<System.Runtime.Serialization.OnDeserializedAttribute>]
     member __.OnDeserialized (_ : System.Runtime.Serialization.StreamingContext) =
         //ignore(context)
-        //comparer <- LanguagePrimitives.FastGenericComparer<'T>
-        tree <- MapTree.OfArray serializedData
+        //comparer <- LanguagePrimitives.FastGenericComparer<'Key>
+        tree <-
+            // OPTIMIZE : Implement a MapTree.OfKvpArray method so we can avoid the overhead
+            // of using Array.map to simply convert KeyValuePair to tuples.
+            serializedData
+            |> Array.map (fun (KeyValue (k, v)) -> k, v)
+            |> MapTree.OfArray 
         serializedData <- null
 #endif
 
-    /// The empty set instance.
+    /// The empty map instance.
 #if FX_NO_DEBUG_DISPLAYS
 #else
     [<DebuggerBrowsable(DebuggerBrowsableState.Never)>]
@@ -746,6 +750,11 @@ type Map<[<EqualityConditionalOn>] 'Key, [<EqualityConditionalOn;ComparisonCondi
     //
     member __.ContainsKey (key : 'Key) : bool =
         MapTree.ContainsKey key tree
+
+//    //
+//    member __.Item
+//        with get (key : 'Key) =
+//            MapTree.Find key tree
 
     //
     member this.Add (key : 'Key) (value : 'Value) : Map<'Key, 'Value> =
@@ -867,7 +876,7 @@ type Map<[<EqualityConditionalOn>] 'Key, [<EqualityConditionalOn;ComparisonCondi
         else
             Map (trueTree), Map (falseTree)
 
-(*
+
     // OPTIMIZE : Instead of computing this repeatedly -- this type is immutable so we should
     // lazily compute the hashcode once instead; however, we do need to account for the case
     // where an instance is created via deserialization, so it may make sense to use a 'ref'
@@ -876,8 +885,9 @@ type Map<[<EqualityConditionalOn>] 'Key, [<EqualityConditionalOn;ComparisonCondi
     member __.ComputeHashCode () =
         let inline combineHash x y = (x <<< 1) + y + 631
         (0, tree)
-        ||> MapTree.Fold (fun res x ->
-            combineHash res (hash x))
+        ||> MapTree.Fold (fun res x y ->
+            let res = combineHash res (hash x)
+            combineHash res (Unchecked.hash y))
         |> abs
 
     override this.GetHashCode () =
@@ -888,36 +898,36 @@ type Map<[<EqualityConditionalOn>] 'Key, [<EqualityConditionalOn;ComparisonCondi
     // imperative loop instead of a recursive function?
     override this.Equals other =
         match other with
-        | :? Set<'T> as other ->
+        | :? Map<'Key, 'Value> as other ->
             use e1 = (this :> seq<_>).GetEnumerator ()
             use e2 = (other :> seq<_>).GetEnumerator ()
             let rec loop () =
                 let m1 = e1.MoveNext ()
                 let m2 = e2.MoveNext ()
-                (m1 = m2) && (not m1 || ((e1.Current = e2.Current) && loop ()))
+                (m1 = m2) && (not m1 || ((e1.Current.Key = e2.Current.Key) && (Unchecked.equals e1.Current.Value e2.Current.Value) && loop()))
             loop ()
         | _ -> false
 
     override x.ToString () =
         match List.ofSeq (Seq.truncate 4 x) with
-        | [] -> "set []"
-        | [h1] ->
+        | [] -> "map []"
+        | [KeyValue h1] ->
             System.Text.StringBuilder()
-                .Append("set [")
+                .Append("map [")
                 .Append(LanguagePrimitives.anyToStringShowingNull h1)
                 .Append("]")
                 .ToString()
-        | [h1; h2] ->
+        | [KeyValue h1;KeyValue h2] ->
             System.Text.StringBuilder()
-                .Append("set [")
+                .Append("map [")
                 .Append(LanguagePrimitives.anyToStringShowingNull h1)
                 .Append("; ")
                 .Append(LanguagePrimitives.anyToStringShowingNull h2)
                 .Append("]")
                 .ToString()
-        | [h1; h2; h3] ->
+        | [KeyValue h1;KeyValue h2;KeyValue h3] ->
             System.Text.StringBuilder()
-                .Append("set [")
+                .Append("map [")
                 .Append(LanguagePrimitives.anyToStringShowingNull h1)
                 .Append("; ")
                 .Append(LanguagePrimitives.anyToStringShowingNull h2)
@@ -925,9 +935,9 @@ type Map<[<EqualityConditionalOn>] 'Key, [<EqualityConditionalOn;ComparisonCondi
                 .Append(LanguagePrimitives.anyToStringShowingNull h3)
                 .Append("]")
                 .ToString()
-        | h1 :: h2 :: h3 :: _ ->
+        | KeyValue h1 :: KeyValue h2 :: KeyValue h3 :: _ ->
             System.Text.StringBuilder()
-                .Append("set [")
+                .Append("map [")
                 .Append(LanguagePrimitives.anyToStringShowingNull h1)
                 .Append("; ")
                 .Append(LanguagePrimitives.anyToStringShowingNull h2)
@@ -936,48 +946,48 @@ type Map<[<EqualityConditionalOn>] 'Key, [<EqualityConditionalOn;ComparisonCondi
                 .Append("; ... ]")
                 .ToString()
 
-    interface System.IComparable with
-        /// <inherit />
-        member __.CompareTo other =
-            MapTree.Compare (tree, (other :?> Set<'T>).Tree)
+    interface IEnumerable<KeyValuePair<'Key, 'Value>> with
+        member m.GetEnumerator() = MapIterator.mkIEnumerator tree
 
     interface System.Collections.IEnumerable with
-        /// <inherit />
-        member __.GetEnumerator () =
-//            (MapTree.ToSeq tree).GetEnumerator ()
-            SetIterator.mkIEnumerator tree
-            :> System.Collections.IEnumerator
+        member m.GetEnumerator() = (MapIterator.mkIEnumerator tree :> System.Collections.IEnumerator)
 
-    interface IEnumerable<'T> with
-        /// <inherit />
-        member __.GetEnumerator () =
-            //(MapTree.ToSeq tree).GetEnumerator ()
-            SetIterator.mkIEnumerator tree
+    interface IDictionary<'Key, 'Value> with
+        member m.Item
+            with get x = m.[x]
+            and set _ _ = raise <| System.NotSupportedException (SR.GetString SR.mapCannotBeMutated)
 
-    interface ICollection<'T> with
-        /// <inherit />
-        member __.Count
-            with get () =
-                int <| MapTree.Count tree
+        // REVIEW: this implementation could avoid copying the Values to an array
+        member s.Keys = ([| for kvp in s -> kvp.Key |] :> ICollection<'Key>)
 
-        /// <inherit />
-        member __.IsReadOnly
-            with get () = true
+        // REVIEW: this implementation could avoid copying the Values to an array
+        member s.Values = ([| for kvp in s -> kvp.Value |] :> ICollection<'Value>)
 
-        /// <inherit />
-        member __.Add _ =
-            raise <| System.NotSupportedException "ReadOnlyCollection"
+        member s.Add (_, _) =
+            raise <| System.NotSupportedException (SR.GetString SR.mapCannotBeMutated)
+        member s.ContainsKey k =
+            s.ContainsKey k
+        member s.TryGetValue (k, r) =
+            if s.ContainsKey k then
+                r <- s.[k]
+                true
+            else false
+        member s.Remove (_ : 'Key) : bool =
+            raise <| System.NotSupportedException (SR.GetString SR.mapCannotBeMutated)
 
-        /// <inherit />
-        member __.Clear () =
-            raise <| System.NotSupportedException "ReadOnlyCollection"
+    interface ICollection<KeyValuePair<'Key, 'Value>> with
+        member s.Add _ =
+            raise <| System.NotSupportedException (SR.GetString SR.mapCannotBeMutated)
+        member s.Clear () =
+            raise <| System.NotSupportedException (SR.GetString SR.mapCannotBeMutated)
+        member s.Remove _ =
+            raise <| System.NotSupportedException (SR.GetString SR.mapCannotBeMutated)
+        member s.Contains(x) =
+            s.ContainsKey(x.Key) && Unchecked.equals s.[x.Key] x.Value
+        member s.CopyTo (array, arrayIndex) =
+            //MapTree.copyToArray tree arr i
+            (*
 
-        /// <inherit />
-        member __.Contains (item : 'T) =
-            MapTree.Contains item tree
-
-        /// <inherit />
-        member this.CopyTo (array, arrayIndex) =
             // Preconditions
             if System.Object.ReferenceEquals (null, array) then
                 nullArg "array"
@@ -994,10 +1004,26 @@ type Map<[<EqualityConditionalOn>] 'Key, [<EqualityConditionalOn;ComparisonCondi
                 index + 1) arrayIndex
             |> ignore
 
-        /// <inherit />
-        member __.Remove _ : bool =
-            raise <| System.NotSupportedException "ReadOnlyCollection"
-*)
+            *)
+            raise <| System.NotImplementedException ()
+        member s.IsReadOnly =
+            true
+        member s.Count =
+            s.Count
+
+    interface System.IComparable with
+        member m.CompareTo (obj: obj) =
+            match obj with
+            | :? Map<'Key, 'Value> as m2 ->
+                (m, m2)
+                ||> Seq.compareWith
+                    (fun (kvp1 : KeyValuePair<_,_>) (kvp2 : KeyValuePair<_,_>) ->
+                        match compare kvp1.Key kvp2.Key with
+                        | 0 ->
+                            Unchecked.compare kvp1.Value kvp2.Value
+                        | c -> c)
+            | _ ->
+                invalidArg "obj" (SR.GetString SR.notComparable)
 
 and [<Sealed>]
     internal MapDebugView<'Key, 'Value when 'Key : comparison> (map : Map<'Key, 'Value>) =
