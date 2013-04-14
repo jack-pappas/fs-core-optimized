@@ -30,18 +30,49 @@ open OptimizedClosures
             the formatting, fixing incomplete pattern-matches), then some of the supporting functions
             (e.g., iter, fold) were modified to use mutable data structures internally to eliminate
             traversal overhead and increase performance.
- *)
-
+*)
 
 /// SetTree which serves as the internal representation of the Set type.
 [<NoEquality; NoComparison>]
 [<CompilationRepresentation(CompilationRepresentationFlags.UseNullAsTrueValue)>]
-type (*internal*) SetTree<'T when 'T : comparison> =
+type internal SetTree<'T when 'T : comparison> =
     /// Empty tree.
     | Empty
     /// Node.
     // Left-Child, Right-Child, Value, Height
     | Node of SetTree<'T> * SetTree<'T> * 'T * uint32
+
+#if CHECKED
+    /// Implementation. Returns the height of a SetTree.
+    static member private ComputeHeightRec (tree : SetTree<'T>) cont =
+        match tree with
+        | Empty ->
+            cont 0u
+        | Node (l, r, _, _) ->
+            SetTree.ComputeHeightRec l <| fun height_l ->
+            SetTree.ComputeHeightRec r <| fun height_r ->
+                (max height_l height_r) + 1u
+                |> cont
+
+    /// Returns the height of a SetTree.
+    static member private ComputeHeight (tree : SetTree<'T>) =
+        SetTree.ComputeHeightRec tree id
+        
+    /// Determines if a SetTree is correctly formed.
+    /// It isn't necessary to call this at run-time, though it may be useful for asserting
+    /// the correctness of functions which weren't extracted from the Isabelle theory.
+    static member private AvlInvariant (tree : SetTree<'T>) =
+        match tree with
+        | Empty -> true
+        | Node (l, r, x, h) ->
+            let height_l = SetTree.ComputeHeight l
+            let height_r = SetTree.ComputeHeight r
+            height_l = height_r
+            || (height_l = (1u + height_r) || height_r = (1u + height_l))
+            && h = ((max height_l height_r) + 1u)
+            && SetTree.AvlInvariant l
+            && SetTree.AvlInvariant r
+#endif
 
     /// Returns the height of a SetTree.
     static member inline private Height (tree : SetTree<'T>) =
@@ -556,60 +587,102 @@ type (*internal*) SetTree<'T when 'T : comparison> =
 
     /// Computes the union of two SetTrees.
     static member Union (tree1 : SetTree<'T>, tree2 : SetTree<'T>) : SetTree<'T> =
-        raise <| System.NotImplementedException "SetTree.Union"
+        // Guess which tree is larger (contains a greater number of elements) based on
+        // the height of the trees; then, merge the smaller tree into the larger tree.
+        if SetTree.Height tree1 < SetTree.Height tree2 then
+            // tree1 smaller than tree2
+            SetTree.FoldBack SetTree.Insert tree2 tree1
+        else
+            SetTree.FoldBack SetTree.Insert tree1 tree2
 
     /// Computes the intersection of two SetTrees.
     static member Intersect (tree1 : SetTree<'T>, tree2 : SetTree<'T>) : SetTree<'T> =
-        raise <| System.NotImplementedException "SetTree.Intersect"
+        // Guess which tree is larger (contains a greater number of elements) based on
+        // the height of the trees; then, fold over the larger tree, removing it's
+        // elements from the smaller tree. This minimizes the overhead due to rebalancing.
+        if SetTree.Height tree1 < SetTree.Height tree2 then
+            // Fold over tree2, removing it's elements from tree1
+            let result = SetTree.FoldBack SetTree.Delete tree1 tree2
+            // Now remove the elements in tree1 from the result
+            SetTree.FoldBack SetTree.Delete result tree1
+        else
+            // Fold over tree1, removing it's elements from tree2
+            let result = SetTree.FoldBack SetTree.Delete tree2 tree1
+            // Now remove the elements in tree2 from the result
+            SetTree.FoldBack SetTree.Delete result tree2
 
     /// Returns a new SetTree created by removing the elements of the
     /// second SetTree from the first.
     static member Difference (tree1 : SetTree<'T>, tree2 : SetTree<'T>) : SetTree<'T> =
-        raise <| System.NotImplementedException "SetTree.Difference"
+        // Fold over tree2, removing it's elements from tree1
+        SetTree.FoldBack SetTree.Delete tree1 tree2
 
-(*
-    /// Implementation. Returns the height of a SetTree.
-    // OPTIMIZE : This should be re-implemented without continuations --
-    // move it into 'ComputeHeight' and use a mutable stack to traverse the tree.
-    static member private ComputeHeightRec (tree : SetTree<'T>) cont =
-        match tree with
-        | Empty ->
-            cont 0u
-        | Node (l, r, _, _) ->
-            SetTree.ComputeHeightRec l <| fun height_l ->
-            SetTree.ComputeHeightRec r <| fun height_r ->
-                (max height_l height_r) + 1u
-                |> cont
+    //
+    static member IsSubset (a : SetTree<'T>, b : SetTree<'T>) : bool =
+        SetTree.Forall (fun x -> SetTree.Contains x b) a
 
-    /// Returns the height of a SetTree.
-    static member ComputeHeight (tree : SetTree<'T>) =
-        SetTree.ComputeHeightRec tree id
+    //
+    static member IsProperSubset (a : SetTree<'T>, b : SetTree<'T>) : bool =
+        SetTree.Forall (fun x -> SetTree.Contains x b) a
+        && SetTree.Exists (fun x -> not (SetTree.Contains x a)) b
+
+    static member private CompareStacks (l1 : SetTree<'T> list) (l2 : SetTree<'T> list) : int =
+        match l1, l2 with
+        | [], [] -> 0
+        | [], _ -> -1
+        | _, [] -> 1
+        | (Empty :: t1),(Empty :: t2) ->
+            SetTree.CompareStacks t1 t2
+        | (Node (Empty, Empty, n1k, _) :: t1), (Node (Empty, Empty, n2k, _) :: t2) ->
+            let c = compare n1k n2k
+            if c <> 0 then c
+            else SetTree.CompareStacks t1 t2
+
+        | (Node (Empty, Empty, n1k, _) :: t1), (Node (Empty, n2r, n2k, _) :: t2) ->
+            let c = compare n1k n2k
+            if c <> 0 then c
+            else SetTree.CompareStacks (Empty :: t1) (n2r :: t2)
+
+        | (Node ((Empty as emp), n1r, n1k, _) :: t1), (Node (Empty, Empty, n2k, _) :: t2) ->
+            let c = compare n1k n2k
+            if c <> 0 then c
+            else SetTree.CompareStacks (n1r :: t1) (emp :: t2)
+
+        | (Node (Empty, n1r, n1k, _) :: t1), (Node (Empty, n2r, n2k, _) :: t2) ->
+            let c = compare n1k n2k
+            if c <> 0 then c
+            else SetTree.CompareStacks (n1r :: t1) (n2r :: t2)
+
+        | ((Node (Empty, Empty, n1k, _) :: t1) as l1), _ ->
+            SetTree.CompareStacks (Empty :: l1) l2
         
-    /// Determines if a SetTree is correctly formed.
-    /// It isn't necessary to call this at run-time, though it may be useful for asserting
-    /// the correctness of functions which weren't extracted from the Isabelle theory.
-    static member AvlInvariant (tree : SetTree<'T>) =
-        match tree with
-        | Empty -> true
-        | Node (l, r, x, h) ->
-            let height_l = SetTree.ComputeHeight l
-            let height_r = SetTree.ComputeHeight r
-            height_l = height_r
-            || (height_l = (1u + height_r) || height_r = (1u + height_l))
-            && h = ((max height_l height_r) + 1u)
-            && SetTree.AvlInvariant l
-            && SetTree.AvlInvariant r
-*)
+        | (Node (n1l, n1r, n1k, _) :: t1), _ ->
+            SetTree.CompareStacks (n1l :: Node (Empty, n1r, n1k, 0u) :: t1) l2
+        
+        | _, ((Node (Empty, Empty, n2k, _) :: t2) as l2) ->
+            SetTree.CompareStacks l1 (Empty :: l2)
+        
+        | _, (Node (n2l, n2r, n2k, _) :: t2) ->
+            SetTree.CompareStacks l1 (n2l :: Node (Empty, n2r, n2k, 0u) :: t2)
+                
+    static member Compare (s1 : SetTree<'T>, s2 : SetTree<'T>) : int =
+        match s1, s2 with
+        | Empty, Empty -> 0
+        | Empty, _ -> -1
+        | _, Empty -> 1
+        | _ ->
+            SetTree<'T>.CompareStacks [s1] [s2]
+
 
 //
 [<Sealed; CompiledName("FSharpSet`1")>]
 #if FX_NO_DEBUG_PROXIES
 #else
-[<System.Diagnostics.DebuggerTypeProxy(typedefof<SetDebugView<_>>)>]
+[<DebuggerTypeProxy(typedefof<SetDebugView<_>>)>]
 #endif
 #if FX_NO_DEBUG_DISPLAYS
 #else
-[<System.Diagnostics.DebuggerDisplay("Count = {Count}")>]
+[<DebuggerDisplay("Count = {Count}")>]
 #endif
 [<CodeAnalysis.SuppressMessage("Microsoft.Naming", "CA1710:IdentifiersShouldHaveCorrectSuffix")>]
 type Set<[<EqualityConditionalOn>] 'T when 'T : comparison> private (tree : SetTree<'T>) =
@@ -708,11 +781,11 @@ type Set<[<EqualityConditionalOn>] 'T when 'T : comparison> private (tree : SetT
 
     //
     static member internal UnionMany (sets : seq<Set<'T>>) : Set<'T> =
-        raise <| System.NotImplementedException "Set.UnionMany"
+        Seq.fold (fun s1 s2 -> s1 + s2) Set<'T>.Empty sets
 
     //
     static member internal IntersectMany (sets : seq<Set<'T>>) : Set<'T> =
-        raise <| System.NotImplementedException "Set.IntersectMany"
+        Seq.reduce (fun s1 s2 -> Set<_>.Intersection(s1,s2)) sets
 
     //
     static member internal FromSeq (sequence : seq<'T>) : Set<'T> =
@@ -757,19 +830,19 @@ type Set<[<EqualityConditionalOn>] 'T when 'T : comparison> private (tree : SetT
 
     //
     member __.IsSubsetOf (otherSet : Set<'T>) : bool =
-        raise <| System.NotImplementedException "Set.IsSubsetOf"
+        SetTree.IsSubset (tree, otherSet.Tree)
 
     //
     member __.IsProperSubsetOf (otherSet : Set<'T>) : bool =
-        raise <| System.NotImplementedException "Set.IsProperSubsetOf"
+        SetTree.IsProperSubset (tree, otherSet.Tree)
 
     //
     member __.IsSupersetOf (otherSet : Set<'T>) : bool =
-        raise <| System.NotImplementedException "Set.IsSupersetOf"
+        SetTree.IsSubset (otherSet.Tree, tree)
 
     //
     member __.IsProperSupersetOf (otherSet : Set<'T>) : bool =
-        raise <| System.NotImplementedException "Set.IsProperSupersetOf"
+        SetTree.IsProperSubset (otherSet.Tree, tree)
 
     //
     member internal __.Iterate (action : 'T -> unit) : unit =
@@ -803,10 +876,10 @@ type Set<[<EqualityConditionalOn>] 'T when 'T : comparison> private (tree : SetT
     //
     member internal __.Filter (predicate : 'T -> bool) : Set<'T> =
         let filteredTree =
-            (SetTree.Empty, tree)
-            ||> SetTree.Fold (fun mappedTree el ->
-                if predicate el then mappedTree
-                else SetTree.Delete el mappedTree)
+            (tree, tree)
+            ||> SetTree.Fold (fun filteredTree el ->
+                if predicate el then filteredTree
+                else SetTree.Delete el filteredTree)
 
         Set (filteredTree)
 
@@ -832,14 +905,48 @@ type Set<[<EqualityConditionalOn>] 'T when 'T : comparison> private (tree : SetT
         else
             Set (trueTree), Set (falseTree)
 
-    //
-    override __.Equals other : bool =
-        raise <| System.NotImplementedException "Set.Equals"
+    // OPTIMIZE : Instead of computing this repeatedly -- this type is immutable so we should
+    // lazily compute the hashcode once instead; however, we do need to account for the case
+    // where an instance is created via deserialization, so it may make sense to use a 'ref'
+    // field (which is excluded from serialization) with Interlocked.Exchange instead of using
+    // a 'lazy' value.
+    member __.ComputeHashCode () =
+        let inline combineHash x y = (x <<< 1) + y + 631
+        (0, tree)
+        ||> SetTree.Fold (fun res x ->
+            combineHash res (hash x))
+        |> abs
+
+    override this.GetHashCode () =
+        this.ComputeHashCode ()
+
+    // OPTIMIZE : Would it be significantly faster if we re-implemented this to work
+    // directly on the SetTrees instead of using enumerators? Or, at least using an
+    // imperative loop instead of a recursive function?
+    override this.Equals other =
+        match other with
+        | :? Set<'T> as other ->
+            use e1 = (this :> seq<_>).GetEnumerator ()
+            use e2 = (other :> seq<_>).GetEnumerator ()
+            let rec loop () =
+                let m1 = e1.MoveNext ()
+                let m2 = e2.MoveNext ()
+                (m1 = m2) && (not m1 || ((e1.Current = e2.Current) && loop ()))
+            loop ()
+        | _ -> false
+
+//    override x.ToString() = 
+//        match List.ofSeq (Seq.truncate 4 x) with 
+//        | [] -> "set []"
+//        | [h1] -> System.Text.StringBuilder().Append("set [").Append(LanguagePrimitives.anyToStringShowingNull h1).Append("]").ToString()
+//        | [h1;h2] -> System.Text.StringBuilder().Append("set [").Append(LanguagePrimitives.anyToStringShowingNull h1).Append("; ").Append(LanguagePrimitives.anyToStringShowingNull h2).Append("]").ToString()
+//        | [h1;h2;h3] -> System.Text.StringBuilder().Append("set [").Append(LanguagePrimitives.anyToStringShowingNull h1).Append("; ").Append(LanguagePrimitives.anyToStringShowingNull h2).Append("; ").Append(LanguagePrimitives.anyToStringShowingNull h3).Append("]").ToString()
+//        | h1 :: h2 :: h3 :: _ -> System.Text.StringBuilder().Append("set [").Append(LanguagePrimitives.anyToStringShowingNull h1).Append("; ").Append(LanguagePrimitives.anyToStringShowingNull h2).Append("; ").Append(LanguagePrimitives.anyToStringShowingNull h3).Append("; ... ]").ToString() 
 
     interface System.IComparable with
         /// <inherit />
         member __.CompareTo other =
-            raise <| System.NotImplementedException ()
+            SetTree.Compare (tree, (other :?> Set<'T>).Tree)
 
     interface System.Collections.IEnumerable with
         /// <inherit />
@@ -864,11 +971,11 @@ type Set<[<EqualityConditionalOn>] 'T when 'T : comparison> private (tree : SetT
 
         /// <inherit />
         member __.Add x =
-            raise <| System.NotSupportedException "IntSets cannot be mutated."
+            raise <| System.NotSupportedException "Sets cannot be mutated."
 
         /// <inherit />
         member __.Clear () =
-            raise <| System.NotSupportedException "IntSets cannot be mutated."
+            raise <| System.NotSupportedException "Sets cannot be mutated."
 
         /// <inherit />
         member __.Contains (item : 'T) =
@@ -885,8 +992,7 @@ type Set<[<EqualityConditionalOn>] 'T when 'T : comparison> private (tree : SetT
             let count = int <| SetTree.Count tree
             if arrayIndex + count > Array.length array then
                 invalidArg "arrayIndex"
-                    "There is not enough room in the array to copy the \
-                     elements when starting at the specified index."
+                    "There is not enough room in the array to copy the elements when starting at the specified index."
 
             this.Fold (fun index el ->
                 array.[index] <- el
@@ -895,12 +1001,15 @@ type Set<[<EqualityConditionalOn>] 'T when 'T : comparison> private (tree : SetT
 
         /// <inherit />
         member __.Remove item : bool =
-            raise <| System.NotSupportedException "IntSets cannot be mutated."
+            raise <| System.NotSupportedException "Sets cannot be mutated."
 
 and [<Sealed>]
     internal SetDebugView<'T when 'T : comparison> (set : Set<'T>) =
 
+#if FX_NO_DEBUG_DISPLAYS
+#else
     [<DebuggerBrowsable(DebuggerBrowsableState.RootHidden)>]
+#endif
     member __.Items
         with get () : 'T[] =
             set.ToArray ()
@@ -985,8 +1094,7 @@ module Set =
     let toArray (s : Set<'T>) = s.ToArray()
 
     [<CompiledName("ToSeq")>]
-    let toSeq (s : Set<'T>) : seq<'T> =
-        s.ToSeq ()
+    let toSeq (s : Set<'T>) : seq<'T> = s.ToSeq ()
 
     [<CompiledName("OfSeq")>]
     let ofSeq (c : seq<_>) = Set<_>.FromSeq c
