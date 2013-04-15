@@ -601,9 +601,7 @@ type internal MapTree<'Key, 'Value when 'Key : comparison> =
 
     /// Builds a new MapTree from an array of KeyValuePairs.
     static member OfKvpArray (array : KeyValuePair<_,_>[]) : MapTree<'Key, 'Value> =
-        (Empty, array)
-        ||> Array.fold (fun tree kvp ->
-            MapTree.Insert kvp tree)
+        Array.foldBack MapTree.Insert array Empty
 
     (* NOTE : This works, but has been disabled for now because the existing F# Map
                 implementation uses a custom IEnumerator implementation which has different

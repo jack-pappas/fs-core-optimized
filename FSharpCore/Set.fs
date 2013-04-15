@@ -560,9 +560,7 @@ type internal SetTree<'T when 'T : comparison> =
 
     /// Builds a new SetTree from the elements of an array.
     static member OfArray (array : _[]) : SetTree<'T> =
-        (Empty, array)
-        ||> Array.fold (fun tree el ->
-            SetTree.Insert el tree)
+        Array.foldBack SetTree.Insert array Empty
 
     (* NOTE : This works, but has been disabled for now because the existing F# Set
                 implementation uses a custom IEnumerator implementation which has different
