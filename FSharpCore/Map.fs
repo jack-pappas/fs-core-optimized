@@ -889,21 +889,21 @@ type Map<[<EqualityConditionalOn>] 'Key, [<EqualityConditionalOn;ComparisonCondi
     //
     static member internal FromSeq (sequence : seq<'Key * 'Value>) : Map<'Key, 'Value> =
         // Preconditions
-        // TODO
+        // TODO : Check for null input
 
         Map (MapTree.OfSeq sequence)
 
     //
     static member internal FromList (list : ('Key * 'Value) list) : Map<'Key, 'Value> =
         // Preconditions
-        // TODO
+        // TODO : Check for null input
 
         Map (MapTree.OfList list)
 
     //
     static member internal FromArray (arr : ('Key * 'Value)[]) : Map<'Key, 'Value> =
         // Preconditions
-        // TODO
+        // TODO : Check for null input
 
         Map (MapTree.OfArray arr)
 
@@ -1114,9 +1114,7 @@ type Map<[<EqualityConditionalOn>] 'Key, [<EqualityConditionalOn;ComparisonCondi
                 nullArg "array"
             elif arrayIndex < 0 then
                 raise <| System.ArgumentOutOfRangeException "arrayIndex"
-
-            let count = int <| MapTree.Count tree
-            if arrayIndex + count > Array.length array then
+            elif arrayIndex + (int (MapTree.Count tree)) > Array.length array then
                 invalidArg "arrayIndex"
                     "There is not enough room in the array to copy the elements when starting at the specified index."
 
@@ -1162,28 +1160,30 @@ and [<Sealed>]
 [<RequireQualifiedAccess; CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
 module Map =
     [<CompiledName("IsEmpty")>]
-    let isEmpty (m:Map<_,_>) = m.IsEmpty
+    let (*inline*) isEmpty (map:Map<_,_>) =
+        map.IsEmpty
 
     [<CompiledName("Add")>]
-    let add k v (m:Map<_,_>) = m.Add(k,v)
+    let (*inline*) add key value (map : Map<_,_>) =
+        map.Add (key, value)
 
     [<CompiledName("Find")>]
-    let find k (m:Map<_,_>) = m.[k]
+    let (*inline*) find k (m:Map<_,_>) = m.[k]
 
     [<CompiledName("TryFind")>]
-    let tryFind k (m:Map<_,_>) = m.TryFind(k)
+    let (*inline*) tryFind k (m:Map<_,_>) = m.TryFind(k)
 
     [<CompiledName("Remove")>]
-    let remove k (m:Map<_,_>) = m.Remove(k)
+    let (*inline*) remove k (m:Map<_,_>) = m.Remove(k)
 
     [<CompiledName("ContainsKey")>]
-    let containsKey k (m:Map<_,_>) = m.ContainsKey(k)
+    let (*inline*) containsKey k (m:Map<_,_>) = m.ContainsKey(k)
 
     [<CompiledName("Iterate")>]
-    let iter f (m:Map<_,_>) = m.Iterate(f)
+    let (*inline*) iter f (m:Map<_,_>) = m.Iterate(f)
 
     [<CompiledName("TryPick")>]
-    let tryPick f (m:Map<_,_>) = m.TryPick(f)
+    let (*inline*) tryPick f (m:Map<_,_>) = m.TryPick(f)
 
     [<CompiledName("Pick")>]
     let pick f (m:Map<_,_>) =
@@ -1192,55 +1192,65 @@ module Map =
         | Some res -> res
 
     [<CompiledName("Exists")>]
-    let exists f (m:Map<_,_>) = m.Exists(f)
+    let (*inline*) exists f (m:Map<_,_>) = m.Exists(f)
 
     [<CompiledName("Filter")>]
-    let filter f (m:Map<_,_>) = m.Filter(f)
+    let (*inline*) filter f (m:Map<_,_>) = m.Filter(f)
 
     [<CompiledName("Partition")>]
-    let partition f (m:Map<_,_>) = m.Partition(f)
+    let (*inline*) partition f (m:Map<_,_>) = m.Partition(f)
 
     [<CompiledName("ForAll")>]
-    let forall f (m:Map<_,_>) = m.ForAll(f)
+    let (*inline*) forall f (m:Map<_,_>) = m.ForAll(f)
 
-    //let mapRange f (m:Map<_,_>) = m.MapRange(f)
+//    let mapRange f (m:Map<_,_>) =
+//        m.MapRange(f)
 
     [<CompiledName("Map")>]
-    let map f (m:Map<_,_>) = m.Map(f)
+    let (*inline*) map f (m:Map<_,_>) =
+        m.Map(f)
 
     [<CompiledName("Fold")>]
-    let fold<'Key,'T,'State when 'Key : comparison> f (z:'State) (m:Map<'Key,'T>) =
+    let (*inline*) fold<'Key,'T,'State when 'Key : comparison> f (z:'State) (m:Map<'Key,'T>) =
         m.Fold f z
 
     [<CompiledName("FoldBack")>]
-    let foldBack<'Key,'T,'State  when 'Key : comparison> f (m:Map<'Key,'T>) (z:'State) =
+    let (*inline*) foldBack<'Key,'T,'State  when 'Key : comparison> f (m:Map<'Key,'T>) (z:'State) =
         m.FoldBack f z
         
     [<CompiledName("ToSeq")>]
-    let toSeq (m:Map<_,_>) = m |> Seq.map (fun kvp -> kvp.Key, kvp.Value)
+    let toSeq (m:Map<_,_>) =
+        m |> Seq.map (fun kvp -> kvp.Key, kvp.Value)
 
     [<CompiledName("FindKey")>]
-    let findKey f (m : Map<_,_>) = m |> toSeq |> Seq.pick (fun (k,v) -> if f k v then Some(k) else None)
+    let findKey f (m : Map<_,_>) =
+        m |> toSeq |> Seq.pick (fun (k,v) -> if f k v then Some(k) else None)
 
     [<CompiledName("TryFindKey")>]
-    let tryFindKey f (m : Map<_,_>) = m |> toSeq |> Seq.tryPick (fun (k,v) -> if f k v then Some(k) else None)
+    let tryFindKey f (m : Map<_,_>) =
+        m |> toSeq |> Seq.tryPick (fun (k,v) -> if f k v then Some(k) else None)
 
     [<CompiledName("OfList")>]
-    let ofList (l: ('Key * 'Value) list) = Map<_,_>.FromList(l)
+    let ofList (l: ('Key * 'Value) list) =
+        Map<_,_>.FromList(l)
 
     [<CompiledName("OfSeq")>]
-    let ofSeq sequence = Map<_,_> (sequence)
+    let (*inline*) ofSeq sequence =
+        Map<_,_> (sequence)
 
     [<CompiledName("OfArray")>]
     let ofArray (array: ('Key * 'Value)[]) =
         Map<_,_>.FromArray array
 
     [<CompiledName("ToList")>]
-    let toList (m:Map<_,_>) = m.ToList()
+    let toList (m:Map<_,_>) =
+        m.ToList()
 
     [<CompiledName("ToArray")>]
-    let toArray (m:Map<_,_>) = m.ToArray()
+    let toArray (m:Map<_,_>) =
+        m.ToArray()
 
     [<CompiledName("Empty")>]
-    let empty<'Key,'Value  when 'Key : comparison> = Map<'Key,'Value>.Empty
+    let empty<'Key,'Value  when 'Key : comparison> =
+        Map<'Key,'Value>.Empty
 
