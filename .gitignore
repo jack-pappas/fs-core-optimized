@@ -34,6 +34,8 @@ obj/
 [Rr]elease*/
 Ankh.NoLoad
 *.gpState
+*.vsp
+*.psess
 
 # Tooling
 _ReSharper*/
