@@ -91,10 +91,6 @@ type internal MapTree<'Key, 'Value when 'Key : comparison> =
     static member inline private Create kvp l (r : MapTree<'Key, 'Value>) =
         Node (l, r, kvp, (max (MapTree.Height l) (MapTree.Height r)) + 1u)
 
-    /// Creates a MapTree containing the specified value.
-    static member Singleton (key, value) : MapTree<'Key, 'Value> =
-        MapTree.Create (KeyValuePair (key, value)) Empty Empty
-
     /// Creates a MapTree containing the specified key-value pair.
     static member Singleton kvp : MapTree<'Key, 'Value> =
         MapTree.Create kvp Empty Empty
@@ -203,22 +199,22 @@ type internal MapTree<'Key, 'Value when 'Key : comparison> =
     /// Adds a value to a MapTree.
     /// If the tree already contains the value, no exception is thrown;
     /// the tree will be returned without modification.
-    static member Insert (key, value) (tree : MapTree<'Key, 'Value>) =
+    static member Insert (newKvp : KeyValuePair<_,_>) (tree : MapTree<'Key, 'Value>) =
         match tree with
         | Empty ->
-            Node (Empty, Empty, KeyValuePair (key, value), 1u)
+            Node (Empty, Empty, newKvp, 1u)
         | Node (l, r, kvp, h) as tree ->
-            let comparison = compare key kvp.Key
+            let comparison = compare newKvp.Key kvp.Key
             if comparison = 0 then                              // x = k
                 // Try to determine if the new value is the same as the existing value;
                 // if so, we can just return the original tree instead of creating a new one.
-                if Unchecked.equals kvp.Value value then tree
+                if Unchecked.equals kvp.Value newKvp.Value then tree
                 else
-                    Node (l, r, KeyValuePair (key, value), h)
+                    Node (l, r, newKvp, h)
             elif comparison < 0 then                            // x < k
-                MapTree.mkt_bal_l kvp (MapTree.Insert (key, value) l) r
+                MapTree.mkt_bal_l kvp (MapTree.Insert newKvp l) r
             else                                                // x > k
-                MapTree.mkt_bal_r kvp l (MapTree.Insert (key, value) r)
+                MapTree.mkt_bal_r kvp l (MapTree.Insert newKvp r)
 
     /// Counts the number of elements in the tree.
     static member Count (tree : MapTree<'Key, 'Value>) =
@@ -586,22 +582,28 @@ type internal MapTree<'Key, 'Value when 'Key : comparison> =
             allElementsMatch
 
     /// Builds a new MapTree from the elements of a sequence.
-    static member OfSeq (sequence : seq<_>) : MapTree<'Key, 'Value> =
+    static member OfSeq (sequence : seq<'Key * 'Value>) : MapTree<'Key, 'Value> =
         (Empty, sequence)
-        ||> Seq.fold (fun tree el ->
-            MapTree.Insert el tree)
+        ||> Seq.fold (fun tree (key, value) ->
+            MapTree.Insert (KeyValuePair (key, value)) tree)
 
     /// Builds a new MapTree from the elements of an list.
-    static member OfList (list : _ list) : MapTree<'Key, 'Value> =
+    static member OfList (list : ('Key * 'Value) list) : MapTree<'Key, 'Value> =
         (Empty, list)
-        ||> List.fold (fun tree el ->
-            MapTree.Insert el tree)
+        ||> List.fold (fun tree (key, value) ->
+            MapTree.Insert (KeyValuePair (key, value)) tree)
 
     /// Builds a new MapTree from the elements of an array.
-    static member OfArray (array : _[]) : MapTree<'Key, 'Value> =
+    static member OfArray (array : ('Key * 'Value)[]) : MapTree<'Key, 'Value> =
         (Empty, array)
-        ||> Array.fold (fun tree el ->
-            MapTree.Insert el tree)
+        ||> Array.fold (fun tree (key, value) ->
+            MapTree.Insert (KeyValuePair (key, value)) tree)
+
+    /// Builds a new MapTree from an array of KeyValuePairs.
+    static member OfKvpArray (array : KeyValuePair<_,_>[]) : MapTree<'Key, 'Value> =
+        (Empty, array)
+        ||> Array.fold (fun tree kvp ->
+            MapTree.Insert kvp tree)
 
     (* NOTE : This works, but has been disabled for now because the existing F# Map
                 implementation uses a custom IEnumerator implementation which has different
@@ -799,9 +801,7 @@ type Map<[<EqualityConditionalOn>] 'Key, [<EqualityConditionalOn;ComparisonCondi
     [<System.Runtime.Serialization.OnSerializingAttribute>]
     member __.OnSerializing (_ : System.Runtime.Serialization.StreamingContext) =
         //ignore(context)
-        serializedData <-
-            MapTree.ToArray tree
-            |> Array.map (fun (k, v) -> KeyValuePair (k, v))
+        serializedData <- MapTree.ToKvpArray tree
 
     // Do not set this to null, since concurrent threads may also be serializing the data
     //[<System.Runtime.Serialization.OnSerializedAttribute>]
@@ -812,12 +812,7 @@ type Map<[<EqualityConditionalOn>] 'Key, [<EqualityConditionalOn;ComparisonCondi
     member __.OnDeserialized (_ : System.Runtime.Serialization.StreamingContext) =
         //ignore(context)
         //comparer <- LanguagePrimitives.FastGenericComparer<'Key>
-        tree <-
-            // OPTIMIZE : Implement a MapTree.OfKvpArray method so we can avoid the overhead
-            // of using Array.map to simply convert KeyValuePair to tuples.
-            serializedData
-            |> Array.map (fun (KeyValue (k, v)) -> k, v)
-            |> MapTree.OfArray 
+        tree <- MapTree.OfKvpArray serializedData
         serializedData <- null
 #endif
 
@@ -875,7 +870,7 @@ type Map<[<EqualityConditionalOn>] 'Key, [<EqualityConditionalOn;ComparisonCondi
     member this.Add (key : 'Key, value : 'Value) : Map<'Key, 'Value> =
         // Add the element to the MapTree; if the result is the same (i.e., the tree
         // already contained the element), return this set instead of creating a new one.
-        let tree' = MapTree.Insert (key, value) tree
+        let tree' = MapTree.Insert (KeyValuePair (key, value)) tree
         if System.Object.ReferenceEquals (tree, tree') then this
         else Map (tree')
 
@@ -889,7 +884,7 @@ type Map<[<EqualityConditionalOn>] 'Key, [<EqualityConditionalOn;ComparisonCondi
 
     //
     static member internal Singleton key value : Map<'Key, 'Value> =
-        Map (MapTree.Singleton (key, value))
+        Map (MapTree.Singleton (KeyValuePair (key, value)))
 
     //
     static member internal FromSeq (sequence : seq<'Key * 'Value>) : Map<'Key, 'Value> =
@@ -959,7 +954,7 @@ type Map<[<EqualityConditionalOn>] 'Key, [<EqualityConditionalOn;ComparisonCondi
             (MapTree.Empty, tree)
             ||> MapTree.Fold (fun mappedTree key value ->
                 let mappedValue = mapping key value
-                MapTree.Insert (key, mappedValue) mappedTree)
+                MapTree.Insert (KeyValuePair (key, mappedValue)) mappedTree)
 
         Map (mappedTree)
 
