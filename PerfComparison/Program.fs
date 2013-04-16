@@ -12,23 +12,43 @@ let randArray count =
     Array.init count <| fun _ ->
         rand.Next ()
 
+
+(* Without timing (for profiling) *)
+////
+//let createRandomSet count =
+//    let values = randArray count
+//    let _ = Set.ofArray values
+//    System.GC.Collect ()
+//    let _ = FSharpCore.Set.ofArray values
+//    ()
+//
+//// Warm-up
+//printf "Warming up..."
+//createRandomSet 10000
+//|> ignore
+//printfn "done."
+//printfn ""
+//
+//do createRandomSet 1000000
+
+
+(* With timing *)
+
 //
 let createRandomSet count =
     let values = randArray count
-    //let watch = System.Diagnostics.Stopwatch.StartNew ()
+    let watch = System.Diagnostics.Stopwatch.StartNew ()
     let oldSet = Set.ofArray values
-    //watch.Stop ()
-    //let oldTime = watch.Elapsed
-    //watch.Reset ()
+    watch.Stop ()
+    let oldTime = watch.Elapsed
+    watch.Reset ()
     System.GC.Collect ()
-    //watch.Start ()
+    watch.Start ()
     let newSet = FSharpCore.Set.ofArray values
-    //watch.Stop ()
-    //let newTime = watch.Elapsed
+    watch.Stop ()
+    let newTime = watch.Elapsed
 
-    //{ Baseline = oldTime; Result = newTime; }
-    ()
-
+    { Baseline = oldTime; Result = newTime; }
 
 // Warm-up
 printf "Warming up..."
@@ -38,9 +58,9 @@ printfn "done."
 printfn ""
 
 let result = createRandomSet 1000000
-//printfn "Create Random Set<int> (n=1000000)"
-//printfn "Baseline: %4f (ms)" result.Baseline.TotalMilliseconds
-//printfn "Result: %4f (ms)" result.Result.TotalMilliseconds
+printfn "Create Random Set<int> (n=1000000)"
+printfn "Baseline: %4f (ms)" result.Baseline.TotalMilliseconds
+printfn "Result: %4f (ms)" result.Result.TotalMilliseconds
 
 
 
