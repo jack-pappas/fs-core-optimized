@@ -21,6 +21,7 @@ namespace FSharpCore
 open System.Collections.Generic
 open System.Diagnostics
 open OptimizedClosures
+open LanguagePrimitives
 
 
 (*  NOTE :  The core functions implementing the SetTree algorithm were extracted into OCaml
@@ -151,12 +152,12 @@ type internal SetTree<'T when 'T : comparison> =
             SetTree.mkt_bal_r (new_n, l, right)
 
     /// Determines if a SetTree contains a specified value.
-    static member Contains (value, tree : SetTree<'T>) =
+    static member Contains (value : 'T, tree : SetTree<'T>) =
         match tree with
         | Empty ->
             false
         | Node (l, r, n, _) ->
-            let comparison = compare value n
+            let comparison = FastGenericComparer.Compare (value, n)
             if comparison = 0 then      // value = n
                 true
             elif comparison < 0 then    // value < n
@@ -167,12 +168,12 @@ type internal SetTree<'T when 'T : comparison> =
     /// Removes the specified value from the tree.
     /// If the tree doesn't contain the value, no exception is thrown;
     /// the tree will be returned without modification.
-    static member Delete (value, tree : SetTree<'T>) =
+    static member Delete (value : 'T, tree : SetTree<'T>) =
         match tree with
         | Empty ->
             Empty
-        | Node (l, r, n, _) as tree ->
-            let comparison = compare value n
+        | Node (l, r, n, _) ->
+            let comparison = FastGenericComparer.Compare (value, n)
             if comparison = 0 then              // x = n
                 SetTree.DeleteRoot tree
             elif comparison < 0 then            // x < n
@@ -185,12 +186,12 @@ type internal SetTree<'T when 'T : comparison> =
     /// Adds a value to a SetTree.
     /// If the tree already contains the value, no exception is thrown;
     /// the tree will be returned without modification.
-    static member Insert (value, tree : SetTree<'T>) =
+    static member Insert (value : 'T, tree : SetTree<'T>) =
         match tree with
         | Empty ->
             Node (Empty, Empty, value, 1u)
-        | Node (l, r, n, _) as tree ->
-            let comparison = compare value n
+        | Node (l, r, n, _) ->
+            let comparison = FastGenericComparer.Compare (value, n)
             if comparison = 0 then                              // x = n
                 tree
             elif comparison < 0 then                            // x < n
@@ -659,25 +660,25 @@ type internal SetTree<'T when 'T : comparison> =
         | (Empty :: t1), (Empty :: t2) ->
             SetTree.CompareStacks (t1, t2)
         | (Node (Empty, Empty, n1k, _) :: t1), (Node (Empty, Empty, n2k, _) :: t2) ->
-            match compare n1k n2k with
+            match FastGenericComparer.Compare (n1k, n2k) with
             | 0 ->
                 SetTree.CompareStacks (t1, t2)
             | c -> c
 
         | (Node (Empty, Empty, n1k, _) :: t1), (Node (Empty, n2r, n2k, _) :: t2) ->
-            match compare n1k n2k with
+            match FastGenericComparer.Compare (n1k, n2k) with
             | 0 ->
                 SetTree.CompareStacks (Empty :: t1, n2r :: t2)
             | c -> c
 
         | (Node (Empty, n1r, n1k, _) :: t1), (Node (Empty, Empty, n2k, _) :: t2) ->
-            match compare n1k n2k with
+            match FastGenericComparer.Compare (n1k, n2k) with
             | 0 ->
                 SetTree.CompareStacks (n1r :: t1, Empty :: t2)
             | c -> c
 
         | (Node (Empty, n1r, n1k, _) :: t1), (Node (Empty, n2r, n2k, _) :: t2) ->
-            match compare n1k n2k with
+            match FastGenericComparer.Compare (n1k, n2k) with
             | 0 ->
                 SetTree.CompareStacks (n1r :: t1, n2r :: t2)
             | c -> c
