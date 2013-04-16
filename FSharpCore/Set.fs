@@ -152,7 +152,7 @@ type internal SetTree<'T when 'T : comparison> =
             SetTree.mkt_bal_r (new_n, l, right)
 
     /// Determines if a SetTree contains a specified value.
-    static member Contains (value : 'T, tree : SetTree<'T>) =
+    static member Contains (tree : SetTree<'T>, value : 'T) =
         match tree with
         | Empty ->
             false
@@ -161,14 +161,14 @@ type internal SetTree<'T when 'T : comparison> =
             if comparison = 0 then      // value = n
                 true
             elif comparison < 0 then    // value < n
-                SetTree.Contains (value, l)
+                SetTree.Contains (l, value)
             else                        // value > n
-                SetTree.Contains (value, r)
+                SetTree.Contains (r, value)
 
     /// Removes the specified value from the tree.
     /// If the tree doesn't contain the value, no exception is thrown;
     /// the tree will be returned without modification.
-    static member Delete (value : 'T, tree : SetTree<'T>) =
+    static member Delete (tree : SetTree<'T>, value : 'T) =
         match tree with
         | Empty ->
             Empty
@@ -177,16 +177,16 @@ type internal SetTree<'T when 'T : comparison> =
             if comparison = 0 then              // x = n
                 SetTree.DeleteRoot tree
             elif comparison < 0 then            // x < n
-                let la = SetTree.Delete (value, l)
+                let la = SetTree.Delete (l, value)
                 SetTree.mkt_bal_r (n, la, r)
             else                                // x > n
-                let a = SetTree.Delete (value, r)
+                let a = SetTree.Delete (r, value)
                 SetTree.mkt_bal_l (n, l, a)
 
     /// Adds a value to a SetTree.
     /// If the tree already contains the value, no exception is thrown;
     /// the tree will be returned without modification.
-    static member Insert (value : 'T, tree : SetTree<'T>) =
+    static member Insert (tree : SetTree<'T>, value : 'T) =
         match tree with
         | Empty ->
             Node (Empty, Empty, value, 1u)
@@ -195,10 +195,10 @@ type internal SetTree<'T when 'T : comparison> =
             if comparison = 0 then                              // x = n
                 tree
             elif comparison < 0 then                            // x < n
-                let l' = SetTree.Insert (value, l)
+                let l' = SetTree.Insert (l, value)
                 SetTree.mkt_bal_l (n, l', r)
             else                                                // x > n
-                let r' = SetTree.Insert (value, r)
+                let r' = SetTree.Insert (r, value)
                 SetTree.mkt_bal_r (n, l, r')
 
     /// Gets the maximum (greatest) value stored in the SetTree.
@@ -551,19 +551,15 @@ type internal SetTree<'T when 'T : comparison> =
 
     /// Builds a new SetTree from the elements of a sequence.
     static member OfSeq (sequence : seq<_>) : SetTree<'T> =
-        (Empty, sequence)
-        ||> Seq.fold (fun tree el ->
-            SetTree.Insert (el, tree))
+        Seq.fold (FuncConvert.FuncFromTupled SetTree.Insert) Empty sequence
 
     /// Builds a new SetTree from the elements of an list.
     static member OfList (list : _ list) : SetTree<'T> =
-        (Empty, list)
-        ||> List.fold (fun tree el ->
-            SetTree.Insert (el, tree))
+        List.fold (FuncConvert.FuncFromTupled SetTree.Insert) Empty list
 
     /// Builds a new SetTree from the elements of an array.
     static member OfArray (array : _[]) : SetTree<'T> =
-        Array.foldBack (FuncConvert.FuncFromTupled SetTree.Insert) array Empty
+        Array.fold (FuncConvert.FuncFromTupled SetTree.Insert) Empty array
 
     (* NOTE : This works, but has been disabled for now because the existing F# Set
                 implementation uses a custom IEnumerator implementation which has different
@@ -605,9 +601,9 @@ type internal SetTree<'T when 'T : comparison> =
         // the height of the trees; then, merge the smaller tree into the larger tree.
         if SetTree.Height tree1 < SetTree.Height tree2 then
             // tree1 smaller than tree2
-            SetTree.FoldBack (FuncConvert.FuncFromTupled SetTree.Insert) tree2 tree1
+            SetTree.Fold (FuncConvert.FuncFromTupled SetTree.Insert) tree1 tree2
         else
-            SetTree.FoldBack (FuncConvert.FuncFromTupled SetTree.Insert) tree1 tree2
+            SetTree.Fold (FuncConvert.FuncFromTupled SetTree.Insert) tree2 tree1
 
     /// Computes the intersection of two SetTrees.
     static member Intersect (tree1 : SetTree<'T>, tree2 : SetTree<'T>) : SetTree<'T> =
@@ -623,15 +619,15 @@ type internal SetTree<'T when 'T : comparison> =
             // are not also in the larger tree.
             (tree1, tree1)
             ||> SetTree.Fold (fun tree1 el ->
-                if SetTree.Contains (el, tree2) then tree1
-                else SetTree.Delete (el, tree1))
+                if SetTree.Contains (tree2, el) then tree1
+                else SetTree.Delete (tree1, el))
         else
             // Fold over the smaller tree, removing any elements which
             // are not also in the larger tree.
             (tree2, tree2)
             ||> SetTree.Fold (fun tree2 el ->
-                if SetTree.Contains (el, tree1) then tree2
-                else SetTree.Delete (el, tree2))
+                if SetTree.Contains (tree1, el) then tree2
+                else SetTree.Delete (tree2, el))
 
     /// Returns a new SetTree created by removing the elements of the
     /// second SetTree from the first.
@@ -641,16 +637,16 @@ type internal SetTree<'T when 'T : comparison> =
                         them in a single pass. *)
 
         // Fold over tree2, removing it's elements from tree1
-        SetTree.FoldBack (FuncConvert.FuncFromTupled SetTree.Delete) tree1 tree2
+        SetTree.Fold (FuncConvert.FuncFromTupled SetTree.Delete) tree1 tree2
 
     //
     static member IsSubset (set1 : SetTree<'T>, set2 : SetTree<'T>) : bool =
-        SetTree.Forall (fun x -> SetTree.Contains (x, set2)) set1
+        SetTree.Forall (fun x -> SetTree.Contains (set2, x)) set1
 
     //
     static member IsProperSubset (set1 : SetTree<'T>, set2 : SetTree<'T>) : bool =
-        SetTree.Forall (fun x -> SetTree.Contains (x, set2)) set1
-        && SetTree.Exists (fun x -> not (SetTree.Contains (x, set1))) set2
+        SetTree.Forall (fun x -> SetTree.Contains (set2, x)) set1
+        && SetTree.Exists (fun x -> not (SetTree.Contains (set1, x))) set2
 
     static member private CompareStacks (l1 : SetTree<'T> list, l2 : SetTree<'T> list) : int =
         match l1, l2 with
@@ -880,13 +876,13 @@ type Set<[<EqualityConditionalOn>] 'T when 'T : comparison> private (tree : SetT
 
     //
     member __.Contains (value : 'T) : bool =
-        SetTree.Contains (value, tree)
+        SetTree.Contains (tree, value)
 
     //
     member this.Add (value : 'T) : Set<'T> =
         // Add the element to the SetTree; if the result is the same (i.e., the tree
         // already contained the element), return this set instead of creating a new one.
-        let tree' = SetTree.Insert (value, tree)
+        let tree' = SetTree.Insert (tree, value)
         if System.Object.ReferenceEquals (tree, tree') then this
         else Set (tree')
 
@@ -894,7 +890,7 @@ type Set<[<EqualityConditionalOn>] 'T when 'T : comparison> private (tree : SetT
     member this.Remove (value : 'T) : Set<'T> =
         // Remove the element from the SetTree; if the result is the same (i.e., the tree
         // did not contain the element), return this set instead of creating a new one.
-        let tree' = SetTree.Delete (value, tree)
+        let tree' = SetTree.Delete (tree, value)
         if System.Object.ReferenceEquals (tree, tree') then this
         else Set (tree')
 
@@ -1030,7 +1026,7 @@ type Set<[<EqualityConditionalOn>] 'T when 'T : comparison> private (tree : SetT
         let mappedTree =
             (SetTree.Empty, tree)
             ||> SetTree.Fold (fun mappedTree el ->
-                SetTree.Insert (mapping el, mappedTree))
+                SetTree.Insert (mappedTree, mapping el))
 
         Set (mappedTree)
 
@@ -1040,7 +1036,7 @@ type Set<[<EqualityConditionalOn>] 'T when 'T : comparison> private (tree : SetT
             (tree, tree)
             ||> SetTree.Fold (fun filteredTree el ->
                 if predicate el then filteredTree
-                else SetTree.Delete (el, filteredTree))
+                else SetTree.Delete (filteredTree, el))
 
         Set (filteredTree)
 
@@ -1051,9 +1047,9 @@ type Set<[<EqualityConditionalOn>] 'T when 'T : comparison> private (tree : SetT
             ||> SetTree.Fold (fun (trueTree, falseTree) el ->
                 if predicate el then
                     trueTree,
-                    SetTree.Delete (el, falseTree)
+                    SetTree.Delete (falseTree, el)
                 else
-                    SetTree.Delete (el, trueTree),
+                    SetTree.Delete (trueTree, el),
                     falseTree)
 
         // If either of the 'true' or 'false' trees are equivalent to the input tree,
@@ -1172,7 +1168,7 @@ type Set<[<EqualityConditionalOn>] 'T when 'T : comparison> private (tree : SetT
 
         /// <inherit />
         member __.Contains (item : 'T) =
-            SetTree.Contains (item, tree)
+            SetTree.Contains (tree, item)
 
         /// <inherit />
         member this.CopyTo (array, arrayIndex) =
