@@ -126,7 +126,7 @@ printfn ""
 
 // Test 64-bit integers.
 let resultInt64 = RandomSet.int64 1000000 100000000L 0.9
-printfn "Create Random Set<int> (n=1000000)"
+printfn "Create Random Set<int64> (n=1000000)"
 printfn "Baseline: %4f (ms)" resultInt64.Baseline.TotalMilliseconds
 printfn "Result: %4f (ms)" resultInt64.Result.TotalMilliseconds
 printfn ""
