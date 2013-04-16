@@ -148,60 +148,60 @@ type internal MapTree<'Key, 'Value when 'Key : comparison> =
             MapTree.mkt_bal_r (new_n, l, right)
 
     /// Determines if a MapTree contains a specified value.
-    static member ContainsKey key (tree : MapTree<'Key, 'Value>) : bool =
+    static member ContainsKey (comparer : IComparer<'Key>, tree : MapTree<'Key, 'Value>, key) : bool =
         match tree with
         | Empty ->
             false
         | Node (l, r, kvp, _) ->
-            let comparison = compare key kvp.Key
+            let comparison = comparer.Compare (key, kvp.Key)
             if comparison = 0 then      // key = k
                 true
             elif comparison < 0 then    // key < k
-                MapTree.ContainsKey key l
+                MapTree.ContainsKey (comparer, l, key)
             else                        // key > k
-                MapTree.ContainsKey key r
+                MapTree.ContainsKey (comparer, r, key)
 
     /// Try to find a value associated with the specified key in a MapTree.
-    static member TryFind key (tree : MapTree<'Key, 'Value>) : 'Value option =
+    static member TryFind (comparer : IComparer<'Key>, tree : MapTree<'Key, 'Value>, key) : 'Value option =
         match tree with
         | Empty ->
             None
         | Node (l, r, kvp, _) ->
-            let comparison = compare key kvp.Key
+            let comparison = comparer.Compare (key, kvp.Key)
             if comparison = 0 then      // key = k
                 Some kvp.Value
             elif comparison < 0 then    // key < k
-                MapTree.TryFind key l
+                MapTree.TryFind (comparer, l, key)
             else                        // key > k
-                MapTree.TryFind key r
+                MapTree.TryFind (comparer, r, key)
 
     /// Removes the specified value from the tree.
     /// If the tree doesn't contain the value, no exception is thrown;
     /// the tree will be returned without modification.
-    static member Delete key (tree : MapTree<'Key, 'Value>) =
+    static member Delete (comparer : IComparer<'Key>, tree : MapTree<'Key, 'Value>, key) =
         match tree with
         | Empty ->
             Empty
         | Node (l, r, kvp, _) as tree ->
-            let comparison = compare key kvp.Key
+            let comparison = comparer.Compare (key, kvp.Key)
             if comparison = 0 then              // key = k
                 MapTree.DeleteRoot tree
             elif comparison < 0 then            // key < k
-                let la = MapTree.Delete key l
+                let la = MapTree.Delete (comparer, l, key)
                 MapTree.mkt_bal_r (kvp, la, r)
             else                                // key > k
-                let a = MapTree.Delete key r
+                let a = MapTree.Delete (comparer, r, key)
                 MapTree.mkt_bal_l (kvp, l, a)
 
     /// Adds a value to a MapTree.
     /// If the tree already contains the value, no exception is thrown;
     /// the tree will be returned without modification.
-    static member Insert (newKvp : KeyValuePair<_,_>) (tree : MapTree<'Key, 'Value>) =
+    static member Insert (comparer : IComparer<'Key>, tree : MapTree<'Key, 'Value>, newKvp : KeyValuePair<_,_>) =
         match tree with
         | Empty ->
             Node (Empty, Empty, newKvp, 1u)
         | Node (l, r, kvp, h) as tree ->
-            let comparison = compare newKvp.Key kvp.Key
+            let comparison = comparer.Compare (newKvp.Key, kvp.Key)
             if comparison = 0 then                              // x = k
                 // Try to determine if the new value is the same as the existing value;
                 // if so, we can just return the original tree instead of creating a new one.
@@ -209,9 +209,11 @@ type internal MapTree<'Key, 'Value when 'Key : comparison> =
                 else
                     Node (l, r, newKvp, h)
             elif comparison < 0 then                            // x < k
-                MapTree.mkt_bal_l (kvp, MapTree.Insert newKvp l, r)
+                let l' = MapTree.Insert (comparer, l, newKvp)
+                MapTree.mkt_bal_l (kvp, l', r)
             else                                                // x > k
-                MapTree.mkt_bal_r (kvp, l, MapTree.Insert newKvp r)
+                let r' = MapTree.Insert (comparer, r, newKvp)
+                MapTree.mkt_bal_r (kvp, l, r')
 
     /// Counts the number of elements in the tree.
     static member Count (tree : MapTree<'Key, 'Value>) =
@@ -579,26 +581,28 @@ type internal MapTree<'Key, 'Value when 'Key : comparison> =
             allElementsMatch
 
     /// Builds a new MapTree from the elements of a sequence.
-    static member OfSeq (sequence : seq<'Key * 'Value>) : MapTree<'Key, 'Value> =
+    static member OfSeq (comparer : IComparer<'Key>, sequence : seq<'Key * 'Value>) : MapTree<'Key, 'Value> =
         (Empty, sequence)
         ||> Seq.fold (fun tree (key, value) ->
-            MapTree.Insert (KeyValuePair (key, value)) tree)
+            MapTree.Insert (comparer, tree, KeyValuePair (key, value)))
 
     /// Builds a new MapTree from the elements of an list.
-    static member OfList (list : ('Key * 'Value) list) : MapTree<'Key, 'Value> =
+    static member OfList (comparer : IComparer<'Key>, list : ('Key * 'Value) list) : MapTree<'Key, 'Value> =
         (Empty, list)
         ||> List.fold (fun tree (key, value) ->
-            MapTree.Insert (KeyValuePair (key, value)) tree)
+            MapTree.Insert (comparer, tree, KeyValuePair (key, value)))
 
     /// Builds a new MapTree from the elements of an array.
-    static member OfArray (array : ('Key * 'Value)[]) : MapTree<'Key, 'Value> =
+    static member OfArray (comparer : IComparer<'Key>, array : ('Key * 'Value)[]) : MapTree<'Key, 'Value> =
         (Empty, array)
         ||> Array.fold (fun tree (key, value) ->
-            MapTree.Insert (KeyValuePair (key, value)) tree)
+            MapTree.Insert (comparer, tree, KeyValuePair (key, value)))
 
     /// Builds a new MapTree from an array of KeyValuePairs.
-    static member OfKvpArray (array : KeyValuePair<_,_>[]) : MapTree<'Key, 'Value> =
-        Array.foldBack MapTree.Insert array Empty
+    static member OfKvpArray (comparer : IComparer<'Key>, array : KeyValuePair<_,_>[]) : MapTree<'Key, 'Value> =
+        (Empty, array)
+        ||> Array.fold (fun tree kvp ->
+            MapTree.Insert (comparer, tree, kvp))
 
     (* NOTE : This works, but has been disabled for now because the existing F# Map
                 implementation uses a custom IEnumerator implementation which has different
@@ -638,56 +642,56 @@ type internal MapTree<'Key, 'Value when 'Key : comparison> =
         MapTree.IterKvp elements.Add tree
         elements.ToArray ()
 
-    static member private CompareStacks (l1 : MapTree<'Key, 'Value> list, l2 : MapTree<'Key, 'Value> list) : int =
+    static member private CompareStacks (comparer : IComparer<'Key>, l1 : MapTree<'Key, 'Value> list, l2 : MapTree<'Key, 'Value> list) : int =
         match l1, l2 with
         | [], [] -> 0
         | [], _ -> -1
         | _, [] -> 1
         | (Empty :: t1), (Empty :: t2) ->
-            MapTree.CompareStacks (t1, t2)
+            MapTree.CompareStacks (comparer, t1, t2)
         | (Node (Empty, Empty, n1kvp, _) :: t1), (Node (Empty, Empty, n2kvp, _) :: t2) ->
-            match compare n1kvp.Key n2kvp.Key with
+            match comparer.Compare (n1kvp.Key, n2kvp.Key) with
             | 0 ->
-                MapTree.CompareStacks (t1, t2)
+                MapTree.CompareStacks (comparer, t1, t2)
             | c -> c
 
         | (Node (Empty, Empty, n1kvp, _) :: t1), (Node (Empty, n2r, n2kvp, _) :: t2) ->
-            match compare n1kvp.Key n2kvp.Key with
+            match comparer.Compare (n1kvp.Key, n2kvp.Key) with
             | 0 ->
-                MapTree.CompareStacks (Empty :: t1, n2r :: t2)
+                MapTree.CompareStacks (comparer, Empty :: t1, n2r :: t2)
             | c -> c
 
         | (Node (Empty, n1r, n1kvp, _) :: t1), (Node (Empty, Empty, n2kvp, _) :: t2) ->
-            match compare n1kvp.Key n2kvp.Key with
+            match comparer.Compare (n1kvp.Key, n2kvp.Key) with
             | 0 ->
-                MapTree.CompareStacks (n1r :: t1, Empty :: t2)
+                MapTree.CompareStacks (comparer, n1r :: t1, Empty :: t2)
             | c -> c
 
         | (Node (Empty, n1r, n1kvp, _) :: t1), (Node (Empty, n2r, n2kvp, _) :: t2) ->
-            match compare n1kvp.Key n2kvp.Key with
+            match comparer.Compare (n1kvp.Key, n2kvp.Key) with
             | 0 ->
-                MapTree.CompareStacks (n1r :: t1, n2r :: t2)
+                MapTree.CompareStacks (comparer, n1r :: t1, n2r :: t2)
             | c -> c
 
         | ((Node (Empty, Empty, n1kvp, _) :: t1) as l1), _ ->
-            MapTree.CompareStacks (Empty :: l1, l2)
+            MapTree.CompareStacks (comparer, Empty :: l1, l2)
         
         | (Node (n1l, n1r, n1kvp, _) :: t1), _ ->
-            MapTree.CompareStacks (n1l :: Node (Empty, n1r, n1kvp, 0u) :: t1, l2)
+            MapTree.CompareStacks (comparer, n1l :: Node (Empty, n1r, n1kvp, 0u) :: t1, l2)
         
         | _, ((Node (Empty, Empty, n2kvp, _) :: t2) as l2) ->
-            MapTree.CompareStacks (l1, Empty :: l2)
+            MapTree.CompareStacks (comparer, l1, Empty :: l2)
         
         | _, (Node (n2l, n2r, n2kvp, _) :: t2) ->
-            MapTree.CompareStacks (l1, n2l :: Node (Empty, n2r, n2kvp, 0u) :: t2)
+            MapTree.CompareStacks (comparer, l1, n2l :: Node (Empty, n2r, n2kvp, 0u) :: t2)
                 
-    static member Compare (s1 : MapTree<'Key, 'Value>, s2 : MapTree<'Key, 'Value>) : int =
+    static member Compare (comparer : IComparer<'Key>, s1 : MapTree<'Key, 'Value>, s2 : MapTree<'Key, 'Value>) : int =
         match s1, s2 with
         | Empty, Empty -> 0
         | Empty, _ -> -1
         | _, Empty -> 1
         | _ ->
-            MapTree<'Key, 'Value>.CompareStacks ([s1], [s2])
+            MapTree<'Key, 'Value>.CompareStacks (comparer, [s1], [s2])
 
 (*** Imperative left-to-right iterators. ***)
 
@@ -777,12 +781,13 @@ type Map<[<EqualityConditionalOn>] 'Key, [<EqualityConditionalOn;ComparisonCondi
     /// The empty map instance.
     static let empty : Map<'Key, 'Value> = Map Empty
 
+    /// The comparer for the type of the keys used by this collection.
+    /// It is cached here for fast access.
+    //[<System.NonSerialized>]
+    static let comparer = LanguagePrimitives.FastGenericComparer<'Key>
+
 #if FX_NO_BINARY_SERIALIZATION
 #else
-    // NOTE: This type is logically immutable. This field is only mutated during deserialization. 
-    //[<System.NonSerialized>]
-    //let mutable comparer : IComparer<'T> = null     // TODO : Can this be removed now? It's no longer used anywhere.
-
     // NOTE: This type is logically immutable. This field is only mutated during deserialization. 
     [<System.NonSerialized>]
     let mutable tree = tree
@@ -806,8 +811,7 @@ type Map<[<EqualityConditionalOn>] 'Key, [<EqualityConditionalOn;ComparisonCondi
     [<System.Runtime.Serialization.OnDeserializedAttribute>]
     member __.OnDeserialized (_ : System.Runtime.Serialization.StreamingContext) =
         //ignore(context)
-        //comparer <- LanguagePrimitives.FastGenericComparer<'Key>
-        tree <- MapTree.OfKvpArray serializedData
+        tree <- MapTree.OfKvpArray (comparer, serializedData)
         serializedData <- null
 #endif
 
@@ -826,7 +830,7 @@ type Map<[<EqualityConditionalOn>] 'Key, [<EqualityConditionalOn;ComparisonCondi
 
         // OPTIMIZE : Try to cast the sequence to array or list;
         // if it succeeds use the specialized method for that type for better performance.
-        Map (MapTree.OfSeq elements)
+        Map (MapTree.OfSeq (comparer, elements))
 
     //
     member private __.Tree
@@ -847,7 +851,7 @@ type Map<[<EqualityConditionalOn>] 'Key, [<EqualityConditionalOn;ComparisonCondi
     //
     member __.Item
         with get (key : 'Key) =
-            match MapTree.TryFind key tree with
+            match MapTree.TryFind (comparer, tree, key) with
             | None ->
                 raise <| System.Collections.Generic.KeyNotFoundException ()
             | Some value ->
@@ -855,17 +859,17 @@ type Map<[<EqualityConditionalOn>] 'Key, [<EqualityConditionalOn;ComparisonCondi
 
     //
     member __.ContainsKey (key : 'Key) : bool =
-        MapTree.ContainsKey key tree
+        MapTree.ContainsKey (comparer, tree, key)
 
     //
     member __.TryFind (key : 'Key) : 'Value option =
-        MapTree.TryFind key tree
+        MapTree.TryFind (comparer, tree, key)
 
     //
     member this.Add (key : 'Key, value : 'Value) : Map<'Key, 'Value> =
         // Add the element to the MapTree; if the result is the same (i.e., the tree
         // already contained the element), return this set instead of creating a new one.
-        let tree' = MapTree.Insert (KeyValuePair (key, value)) tree
+        let tree' = MapTree.Insert (comparer, tree, KeyValuePair (key, value))
         if System.Object.ReferenceEquals (tree, tree') then this
         else Map (tree')
 
@@ -873,7 +877,7 @@ type Map<[<EqualityConditionalOn>] 'Key, [<EqualityConditionalOn;ComparisonCondi
     member this.Remove (key : 'Key) : Map<'Key, 'Value> =
         // Remove the element from the MapTree; if the result is the same (i.e., the tree
         // did not contain the element), return this set instead of creating a new one.
-        let tree' = MapTree.Delete key tree
+        let tree' = MapTree.Delete (comparer, tree, key)
         if System.Object.ReferenceEquals (tree, tree') then this
         else Map (tree')
 
@@ -886,21 +890,21 @@ type Map<[<EqualityConditionalOn>] 'Key, [<EqualityConditionalOn;ComparisonCondi
         // Preconditions
         // TODO : Check for null input
 
-        Map (MapTree.OfSeq sequence)
+        Map (MapTree.OfSeq (comparer, sequence))
 
     //
     static member internal FromList (list : ('Key * 'Value) list) : Map<'Key, 'Value> =
         // Preconditions
         // TODO : Check for null input
 
-        Map (MapTree.OfList list)
+        Map (MapTree.OfList (comparer, list))
 
     //
     static member internal FromArray (arr : ('Key * 'Value)[]) : Map<'Key, 'Value> =
         // Preconditions
         // TODO : Check for null input
 
-        Map (MapTree.OfArray arr)
+        Map (MapTree.OfArray (comparer, arr))
 
 //    //
 //    member internal this.ToSeq () : seq<'T> =
@@ -949,7 +953,7 @@ type Map<[<EqualityConditionalOn>] 'Key, [<EqualityConditionalOn;ComparisonCondi
             (MapTree.Empty, tree)
             ||> MapTree.Fold (fun mappedTree key value ->
                 let mappedValue = mapping key value
-                MapTree.Insert (KeyValuePair (key, mappedValue)) mappedTree)
+                MapTree.Insert (comparer, mappedTree, KeyValuePair (key, mappedValue)))
 
         Map (mappedTree)
 
@@ -959,7 +963,7 @@ type Map<[<EqualityConditionalOn>] 'Key, [<EqualityConditionalOn;ComparisonCondi
             (tree, tree)
             ||> MapTree.Fold (fun filteredTree key value ->
                 if predicate key value then filteredTree
-                else MapTree.Delete key filteredTree)
+                else MapTree.Delete (comparer, filteredTree, key))
 
         Map (filteredTree)
 
@@ -970,9 +974,9 @@ type Map<[<EqualityConditionalOn>] 'Key, [<EqualityConditionalOn;ComparisonCondi
             ||> MapTree.Fold (fun (trueTree, falseTree) key value ->
                 if predicate key value then
                     trueTree,
-                    MapTree.Delete key falseTree
+                    MapTree.Delete (comparer, falseTree, key)
                 else
-                    MapTree.Delete key trueTree,
+                    MapTree.Delete (comparer, trueTree, key),
                     falseTree)
 
         // If either of the 'true' or 'false' trees are equivalent to the input tree,
@@ -1131,7 +1135,7 @@ type Map<[<EqualityConditionalOn>] 'Key, [<EqualityConditionalOn;ComparisonCondi
                 (m, m2)
                 ||> Seq.compareWith
                     (fun (kvp1 : KeyValuePair<_,_>) (kvp2 : KeyValuePair<_,_>) ->
-                        match compare kvp1.Key kvp2.Key with
+                        match comparer.Compare (kvp1.Key, kvp2.Key) with
                         | 0 ->
                             Unchecked.compare kvp1.Value kvp2.Value
                         | c -> c)
