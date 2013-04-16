@@ -593,47 +593,165 @@ type internal SetTree<'T when 'T : comparison> =
         SetTree.Iter elements.Add tree
         elements.ToArray ()
 
-    /// Computes the union of two SetTrees.
-    static member Union (comparer : IComparer<'T>, tree1 : SetTree<'T>, tree2 : SetTree<'T>) : SetTree<'T> =
-        (* OPTIMIZE :   This function should be re-implemented to use the linear-time
-                        algorithm which traverses both trees simultaneously and merges
-                        them in a single pass. *)
+    //
+    // TODO : This could be replaced by 'mkt_bal_l' and 'mkt_bal_r'.
+    static member private Rebalance (t1, t2, k) : SetTree<'T> =
+        let t1h = SetTree.Height t1
+        let t2h = SetTree.Height t2
+        if t2h > t1h + 2u then // right is heavier than left
+            match t2 with
+            | Node (t2l, t2r, t2k, _) ->
+                // one of the nodes must have height > height t1 + 1
+                if SetTree.Height t2l > t1h + 1u then  // balance left: combination
+                    match t2l with
+                    | Node (t2ll, t2lr, t2lk, _) ->
+                        SetTree.Create (
+                            t2lk,
+                            SetTree.Create (k, t1, t2ll),
+                            SetTree.Create (t2k, t2lr, t2r))
+                    | _ -> failwith "rebalance"
+                else // rotate left
+                    SetTree.Create (
+                        t2k,
+                        SetTree.Create (k, t1, t2l),
+                        t2r)
+            | _ -> failwith "rebalance"
 
-        // Guess which tree is larger (contains a greater number of elements) based on
-        // the height of the trees; then, merge the smaller tree into the larger tree.
-        if SetTree.Height tree1 < SetTree.Height tree2 then
-            // tree1 smaller than tree2
-            (tree1, tree2)
-            ||> SetTree.Fold (fun tree el ->
-                SetTree.Insert (comparer, tree, el))
+        elif t1h > t2h + 2u then // left is heavier than right
+            match t1 with
+            | Node (t1l, t1r, t1k, _) ->
+                // one of the nodes must have height > height t2 + 1
+                if SetTree.Height t1r > t2h + 1u then
+                    // balance right: combination
+                    match t1r with
+                    | Node (t1rl, t1rr, t1rk, _) ->
+                        SetTree.Create (
+                            t1rk,
+                            SetTree.Create (t1k, t1l, t1rl),
+                            SetTree.Create (k, t1rr, t2))
+                    | _ -> failwith "rebalance"
+                else
+                    SetTree.Create (
+                        t1k,
+                        t1l,
+                        SetTree.Create (k, t1r, t2))
+            | _ -> failwith "rebalance"
+
         else
-            (tree2, tree1)
-            ||> SetTree.Fold (fun tree el ->
-                SetTree.Insert (comparer, tree, el))
+            SetTree.Create (k, t1, t2)
+
+    //
+    static member private Balance (comparer : IComparer<'T>, t1, t2, k) =
+        // Given t1 < k < t2 where t1 and t2 are "balanced",
+        // return a balanced tree for <t1,k,t2>.
+        // Recall: balance means subtrees heights differ by at most "tolerance"
+        match t1, t2 with
+        // TODO : The first two patterns can be merged to use the same handler.
+        | Empty, t2 ->
+            // drop t1 = empty
+            SetTree.Insert (comparer, t2, k)
+        | t1, Empty ->
+            // drop t2 = empty
+            SetTree.Insert (comparer, t1, k)
+
+        // TODO : The next two patterns can be merged to use the same handler.
+        | Node (Empty, Empty, k1, _), t2 ->
+            let t' = SetTree.Insert (comparer, t2, k1)
+            SetTree.Insert (comparer, t', k)
+        | t1, Node (Empty, Empty, k2, _) ->
+            let t' = SetTree.Insert (comparer, t1, k2)
+            SetTree.Insert (comparer, t', k)
+
+        | Node (t11, t12, k1, h1), Node (t21, t22, k2, h2) ->
+            // Have:  (t11 < k1 < t12) < k < (t21 < k2 < t22)
+            // Either (a) h1,h2 differ by at most 2 - no rebalance needed.
+            //        (b) h1 too small, i.e. h1+2 < h2
+            //        (c) h2 too small, i.e. h2+2 < h1
+            if   h1+2u < h2 then
+                // case: b, h1 too small
+                // push t1 into low side of t2, may increase height by 1 so rebalance
+                SetTree.Rebalance (SetTree.Balance (comparer, t1, t21, k), t22, k2)
+            elif h2+2u < h1 then
+                // case: c, h2 too small
+                // push t2 into high side of t1, may increase height by 1 so rebalance
+                SetTree.Rebalance (t11, SetTree.Balance (comparer, t12, t2, k), k1)
+            else
+                // case: a, h1 and h2 meet balance requirement
+                SetTree.Create (k, t1, t2)
+
+    //
+    static member private Split (comparer : IComparer<'T>, t, pivot) : SetTree<'T> * bool * SetTree<'T> =
+        // Given a pivot and a set t
+        // Return { x in t s.t. x < pivot }, pivot in t? , { x in t s.t. x > pivot }
+        match t with
+        | Empty  ->
+            Empty, false, Empty
+        | Node (Empty, Empty, k1, _) ->
+            let c = comparer.Compare (k1, pivot)
+            if   c < 0 then t    ,false,Empty // singleton under pivot
+            elif c = 0 then Empty,true ,Empty // singleton is    pivot
+            else            Empty,false,t     // singleton over  pivot
+        | Node (t11, t12, k1, _) ->
+            let c = comparer.Compare (pivot, k1)
+            if   c < 0 then // pivot t1
+                let t11Lo, havePivot, t11Hi = SetTree.Split (comparer, t11, pivot)
+                t11Lo, havePivot, SetTree.Balance (comparer, t11Hi, t12, k1)
+            elif c = 0 then // pivot is k1
+                t11,true,t12
+            else            // pivot t2
+                let t12Lo, havePivot, t12Hi = SetTree.Split (comparer, t12, pivot)
+                SetTree.Balance (comparer, t11, t12Lo, k1), havePivot, t12Hi
+
+    /// Computes the union of two SetTrees.
+    static member Union (comparer : IComparer<'T>, t1 : SetTree<'T>, t2 : SetTree<'T>) : SetTree<'T> =
+        // Perf: tried bruteForce for low heights, but nothing significant 
+        match t1, t2 with
+        | Empty, t -> t
+        | t, Empty -> t
+        | Node (Empty, Empty, k1, _), t2 ->
+            SetTree.Insert (comparer, t2, k1)
+        | t1, Node (Empty, Empty, k2, _) ->
+            SetTree.Insert (comparer, t1, k2)
+
+        | Node (t11, t12, k1, h1), Node (t21, t22, k2, h2) -> // (t11 < k < t12) AND (t21 < k2 < t22) 
+            // Divide and Quonquer:
+            //   Suppose t1 is largest.
+            //   Split t2 using pivot k1 into lo and hi.
+            //   Union disjoint subproblems and then combine. 
+            if h1 > h2 then
+                let lo, _, hi = SetTree.Split (comparer, t2, k1)
+                SetTree.Balance (
+                    comparer,
+                    SetTree.Union (comparer, t11, lo),
+                    SetTree.Union (comparer, t12, hi),
+                    k1)
+            else
+                let lo, _, hi = SetTree.Split (comparer, t1, k2)
+                SetTree.Balance (
+                    comparer,
+                    SetTree.Union (comparer, t21, lo),
+                    SetTree.Union (comparer, t22, hi),
+                    k2)
+
+    /// Implementation. Computes the intersection of two SetTrees.
+    static member private IntersectionAux (comparer : IComparer<'T>, b, m, acc) : SetTree<'T> =
+        match m with
+        | Empty -> acc
+        | Node (Empty, Empty, k, _) ->
+            if SetTree.Contains (comparer, b, k) then
+                SetTree.Insert (comparer, acc, k)
+            else acc
+        | Node (l, r, k, _) ->
+            let acc =
+                let acc = SetTree.IntersectionAux (comparer, b, r, acc)
+                if SetTree.Contains (comparer, b, k) then
+                    SetTree.Insert (comparer, acc, k)
+                else acc 
+            SetTree.IntersectionAux (comparer, b, l, acc)
 
     /// Computes the intersection of two SetTrees.
-    static member Intersect (comparer : IComparer<'T>, tree1 : SetTree<'T>, tree2 : SetTree<'T>) : SetTree<'T> =
-        (* OPTIMIZE :   This function should be re-implemented to use the linear-time
-                        algorithm which traverses both trees simultaneously and merges
-                        them in a single pass. *)
-
-        // Guess which tree is larger (contains a greater number of elements) based on
-        // the height of the trees; then, fold over the larger tree, removing it's
-        // elements from the smaller tree. This minimizes the overhead due to rebalancing.
-        if SetTree.Height tree1 < SetTree.Height tree2 then
-            // Fold over the smaller tree, removing any elements which
-            // are not also in the larger tree.
-            (tree1, tree1)
-            ||> SetTree.Fold (fun tree1 el ->
-                if SetTree.Contains (comparer, tree2, el) then tree1
-                else SetTree.Delete (comparer, tree1, el))
-        else
-            // Fold over the smaller tree, removing any elements which
-            // are not also in the larger tree.
-            (tree2, tree2)
-            ||> SetTree.Fold (fun tree2 el ->
-                if SetTree.Contains (comparer, tree1, el) then tree2
-                else SetTree.Delete (comparer, tree2, el))
+    static member Intersection (comparer : IComparer<'T>, tree1 : SetTree<'T>, tree2 : SetTree<'T>) : SetTree<'T> =
+        SetTree.IntersectionAux (comparer, tree2, tree1, Empty)
 
     /// Returns a new SetTree created by removing the elements of the
     /// second SetTree from the first.
@@ -925,7 +1043,7 @@ type Set<[<EqualityConditionalOn>] 'T when 'T : comparison> private (tree : SetT
         // Compute the intersection of the trees.
         // If the result is the same as either tree (i.e., one set was a subset of the other)
         // return that tree's corresponding set instead of creating a new one.
-        let result = SetTree.Intersect (comparer, set1.Tree, set2.Tree)
+        let result = SetTree.Intersection (comparer, set1.Tree, set2.Tree)
         if System.Object.ReferenceEquals (set1.Tree, result) then set1
         elif System.Object.ReferenceEquals (set2.Tree, result) then set2
         else Set (result)
