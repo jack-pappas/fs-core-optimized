@@ -77,6 +77,7 @@ module RandomSet =
     //
     let int32 count maxValue density =
         let values = RandomArray.int32 count maxValue density
+        System.GC.Collect ()
         let watch = System.Diagnostics.Stopwatch.StartNew ()
         let oldSet = Set.ofArray values
         watch.Stop ()
@@ -93,6 +94,7 @@ module RandomSet =
     //
     let int64 count maxValue density =
         let values = RandomArray.int64 count maxValue density
+        System.GC.Collect ()
         let watch = System.Diagnostics.Stopwatch.StartNew ()
         let oldSet = Set.ofArray values
         watch.Stop ()
