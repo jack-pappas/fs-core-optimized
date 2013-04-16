@@ -36,7 +36,7 @@ type internal MapTree<'Key, 'Value when 'Key : comparison> =
     /// Empty tree.
     | Empty
     /// Node.
-    // Left-Child, Right-Child, Key, Value, Height
+    // Left-Child, Right-Child, Key/Value, Height
     | Node of MapTree<'Key, 'Value> * MapTree<'Key, 'Value> * KeyValuePair<'Key, 'Value> * uint32
 
 #if CHECKED
@@ -85,14 +85,14 @@ type internal MapTree<'Key, 'Value when 'Key : comparison> =
 
     /// Creates a MapTree whose root node holds the specified value
     /// and the specified left and right subtrees.
-    static member inline private Create kvp l (r : MapTree<'Key, 'Value>) =
+    static member inline private Create (kvp, l, r : MapTree<'Key, 'Value>) =
         Node (l, r, kvp, (max (MapTree.Height l) (MapTree.Height r)) + 1u)
 
     /// Creates a MapTree containing the specified key-value pair.
     static member Singleton kvp : MapTree<'Key, 'Value> =
-        MapTree.Create kvp Empty Empty
+        MapTree.Create (kvp, Empty, Empty)
 
-    static member private mkt_bal_l n l (r : MapTree<'Key, 'Value>) =
+    static member private mkt_bal_l (n, l, r : MapTree<'Key, 'Value>) =
         if MapTree.Height l = MapTree.Height r + 2u then
             match l with
             | Empty ->
@@ -103,13 +103,13 @@ type internal MapTree<'Key, 'Value when 'Key : comparison> =
                     | Empty ->
                         failwith "mkt_bal_l"
                     | Node (lrl, lrr, lrn, _) ->
-                        MapTree.Create lrn (MapTree.Create ln ll lrl) (MapTree.Create n lrr r)
+                        MapTree.Create (lrn, MapTree.Create (ln, ll, lrl), MapTree.Create (n, lrr, r))
                 else
-                    MapTree.Create ln ll (MapTree.Create n lr r)
+                    MapTree.Create (ln, ll, MapTree.Create (n, lr, r))
         else
-            MapTree.Create n l r
+            MapTree.Create (n, l, r)
 
-    static member private mkt_bal_r n l (r : MapTree<'Key, 'Value>) =
+    static member private mkt_bal_r (n, l, r : MapTree<'Key, 'Value>) =
         if MapTree.Height r = MapTree.Height l + 2u then
             match r with
             | Empty ->
@@ -120,11 +120,11 @@ type internal MapTree<'Key, 'Value when 'Key : comparison> =
                     | Empty ->
                         failwith "mkt_bal_r"
                     | Node (rll, rlr, rln, _) ->
-                        MapTree.Create rln (MapTree.Create n l rll) (MapTree.Create rn rlr rr)
+                        MapTree.Create (rln, MapTree.Create (n, l, rll), MapTree.Create (rn, rlr, rr))
                 else
-                    MapTree.Create rn (MapTree.Create n l rl) rr
+                    MapTree.Create (rn, MapTree.Create (n, l, rl), rr)
         else
-            MapTree.Create n l r
+            MapTree.Create (n, l, r)
 
     static member private DeleteMax (tree : MapTree<'Key, 'Value>) =
         match tree with
@@ -134,7 +134,7 @@ type internal MapTree<'Key, 'Value when 'Key : comparison> =
             n, l
         | Node (l, (Node (_,_,_,_) as right), n, _) ->
             let na, r = MapTree.DeleteMax right
-            na, MapTree.mkt_bal_l n l r
+            na, MapTree.mkt_bal_l (n, l, r)
 
     static member private DeleteRoot (tree : MapTree<'Key, 'Value>) =
         match tree with
@@ -145,7 +145,7 @@ type internal MapTree<'Key, 'Value when 'Key : comparison> =
             left
         | Node ((Node (_,_,_,_) as left), (Node (_,_,_,_) as right), _, _) ->
             let new_n, l = MapTree.DeleteMax left
-            MapTree.mkt_bal_r new_n l right
+            MapTree.mkt_bal_r (new_n, l, right)
 
     /// Determines if a MapTree contains a specified value.
     static member ContainsKey key (tree : MapTree<'Key, 'Value>) : bool =
@@ -188,10 +188,10 @@ type internal MapTree<'Key, 'Value when 'Key : comparison> =
                 MapTree.DeleteRoot tree
             elif comparison < 0 then            // key < k
                 let la = MapTree.Delete key l
-                MapTree.mkt_bal_r kvp la r
+                MapTree.mkt_bal_r (kvp, la, r)
             else                                // key > k
                 let a = MapTree.Delete key r
-                MapTree.mkt_bal_l kvp l a
+                MapTree.mkt_bal_l (kvp, l, a)
 
     /// Adds a value to a MapTree.
     /// If the tree already contains the value, no exception is thrown;
@@ -209,9 +209,9 @@ type internal MapTree<'Key, 'Value when 'Key : comparison> =
                 else
                     Node (l, r, newKvp, h)
             elif comparison < 0 then                            // x < k
-                MapTree.mkt_bal_l kvp (MapTree.Insert newKvp l) r
+                MapTree.mkt_bal_l (kvp, MapTree.Insert newKvp l, r)
             else                                                // x > k
-                MapTree.mkt_bal_r kvp l (MapTree.Insert newKvp r)
+                MapTree.mkt_bal_r (kvp, l, MapTree.Insert newKvp r)
 
     /// Counts the number of elements in the tree.
     static member Count (tree : MapTree<'Key, 'Value>) =
