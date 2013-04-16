@@ -1,5 +1,6 @@
 ﻿(*
 
+Copyright 2002-2012 Microsoft Corporation
 Copyright 2013 Jack Pappas
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,21 +17,17 @@ limitations under the License.
 
 *)
 
+(* NOTE :   This file has been heavily modified from the original version which
+            shipped in the F# 3.0 code drop. However, it is still a drop-in replacement
+            for that code. *)
+
 namespace FSharpCore
 
 open System.Collections.Generic
 open System.Diagnostics
+//open System.Diagnostics.Contracts
 open OptimizedClosures
 
-
-(*  NOTE :  The core functions implementing the SetTree algorithm were extracted into OCaml
-            from the "AVL Trees" theory in the Archive of Formal Proofs:
-                http://afp.sourceforge.net/entries/AVL-Trees.shtml
-            using Isabelle/HOL 2013. The extracted code was adapted to F# (e.g., by adjusting
-            the formatting, fixing incomplete pattern-matches), then some of the supporting functions
-            (e.g., iter, fold) were modified to use mutable data structures internally to eliminate
-            traversal overhead and increase performance.
-*)
 
 /// SetTree which serves as the internal representation of the Set type.
 [<NoEquality; NoComparison>]

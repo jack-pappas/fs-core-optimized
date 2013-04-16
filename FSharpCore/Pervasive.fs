@@ -1,5 +1,6 @@
 ﻿(*
 
+Copyright 2002-2012 Microsoft Corporation
 Copyright 2013 Jack Pappas
 
 Licensed under the Apache License, Version 2.0 (the "License");
