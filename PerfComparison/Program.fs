@@ -168,6 +168,66 @@ module RandomSet =
 
         { Baseline = oldTime; Result = newTime; }
 
+    //
+    let int32Intersect elementsPerSet setCount maxValue density =
+        let setValues =
+            Array.init setCount <| fun _ ->
+                RandomArray.int32 elementsPerSet maxValue density
+
+        // Create F# Sets from the values.
+        let standardSets = Array.map Set.ofArray setValues
+        
+        System.GC.Collect ()
+        let watch = System.Diagnostics.Stopwatch.StartNew ()
+        let oldResult = Set.intersectMany standardSets
+        watch.Stop ()
+        let oldTime = watch.Elapsed
+        watch.Reset ()
+
+        // Create fs-core-optimized sets from the values.
+        let optSets = Array.map FSharpCore.Set.ofArray setValues
+
+        System.GC.Collect ()
+        watch.Start ()
+        let newResult = FSharpCore.Set.intersectMany optSets
+        watch.Stop ()
+        let newTime = watch.Elapsed
+
+        // Verify the results.
+        assert (Set.toArray oldResult = FSharpCore.Set.toArray newResult)
+
+        { Baseline = oldTime; Result = newTime; }
+
+    //
+    let int64Intersect elementsPerSet setCount maxValue density =
+        let setValues =
+            Array.init setCount <| fun _ ->
+                RandomArray.int64 elementsPerSet maxValue density
+
+        // Create F# Sets from the values.
+        let standardSets = Array.map Set.ofArray setValues
+        
+        System.GC.Collect ()
+        let watch = System.Diagnostics.Stopwatch.StartNew ()
+        let oldResult = Set.intersectMany standardSets
+        watch.Stop ()
+        let oldTime = watch.Elapsed
+        watch.Reset ()
+
+        // Create fs-core-optimized sets from the values.
+        let optSets = Array.map FSharpCore.Set.ofArray setValues
+
+        System.GC.Collect ()
+        watch.Start ()
+        let newResult = FSharpCore.Set.intersectMany optSets
+        watch.Stop ()
+        let newTime = watch.Elapsed
+
+        // Verify the results.
+        assert (Set.toArray oldResult = FSharpCore.Set.toArray newResult)
+
+        { Baseline = oldTime; Result = newTime; }
+
 
 (* Warm up *)
 do
@@ -208,6 +268,22 @@ do
     printfn "Union Random Set<int64> (n=1000, N=10000)"
     printfn "Baseline: %4f (ms)" resultInt64Union.Baseline.TotalMilliseconds
     printfn "Result: %4f (ms)" resultInt64Union.Result.TotalMilliseconds
+    printfn ""
+
+(* Set intersection *)
+do
+    // Test 32-bit integers.
+    let resultInt32Intersect = RandomSet.int32Intersect 1000 10000 System.Int32.MaxValue 0.85
+    printfn "Intersect Random Set<int> (n=1000, N=10000)"
+    printfn "Baseline: %4f (ms)" resultInt32Intersect.Baseline.TotalMilliseconds
+    printfn "Result: %4f (ms)" resultInt32Intersect.Result.TotalMilliseconds
+    printfn ""
+
+    // Test 64-bit integers.
+    let resultInt64Intersect = RandomSet.int64Intersect 1000 10000 System.Int64.MaxValue 0.85
+    printfn "Intersect Random Set<int64> (n=1000, N=10000)"
+    printfn "Baseline: %4f (ms)" resultInt64Intersect.Baseline.TotalMilliseconds
+    printfn "Result: %4f (ms)" resultInt64Intersect.Result.TotalMilliseconds
     printfn ""
     
 
