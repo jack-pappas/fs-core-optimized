@@ -75,7 +75,7 @@ module RandomSet =
     (* With timing *)
 
     //
-    let int32 count maxValue density =
+    let int32Create count maxValue density =
         let values = RandomArray.int32 count maxValue density
         System.GC.Collect ()
         let watch = System.Diagnostics.Stopwatch.StartNew ()
@@ -92,44 +92,125 @@ module RandomSet =
         { Baseline = oldTime; Result = newTime; }
 
     //
-    let int64 count maxValue density =
+    let int64Create count maxValue density =
         let values = RandomArray.int64 count maxValue density
         System.GC.Collect ()
         let watch = System.Diagnostics.Stopwatch.StartNew ()
-        let oldSet = Set.ofArray values
+        let _ = Set.ofArray values
         watch.Stop ()
         let oldTime = watch.Elapsed
         watch.Reset ()
         System.GC.Collect ()
         watch.Start ()
-        let newSet = FSharpCore.Set.ofArray values
+        let _ = FSharpCore.Set.ofArray values
         watch.Stop ()
         let newTime = watch.Elapsed
 
         { Baseline = oldTime; Result = newTime; }
 
+    //
+    let int32Union elementsPerSet setCount maxValue density =
+        let setValues =
+            Array.init setCount <| fun _ ->
+                RandomArray.int32 elementsPerSet maxValue density
+
+        // Create F# Sets from the values.
+        let standardSets = Array.map Set.ofArray setValues
+        
+        System.GC.Collect ()
+        let watch = System.Diagnostics.Stopwatch.StartNew ()
+        let oldResult = Set.unionMany standardSets
+        watch.Stop ()
+        let oldTime = watch.Elapsed
+        watch.Reset ()
+
+        // Create fs-core-optimized sets from the values.
+        let optSets = Array.map FSharpCore.Set.ofArray setValues
+
+        System.GC.Collect ()
+        watch.Start ()
+        let newResult = FSharpCore.Set.unionMany optSets
+        watch.Stop ()
+        let newTime = watch.Elapsed
+
+        // Verify the results.
+        assert (Set.toArray oldResult = FSharpCore.Set.toArray newResult)
+
+        { Baseline = oldTime; Result = newTime; }
+
+    //
+    let int64Union elementsPerSet setCount maxValue density =
+        let setValues =
+            Array.init setCount <| fun _ ->
+                RandomArray.int64 elementsPerSet maxValue density
+
+        // Create F# Sets from the values.
+        let standardSets = Array.map Set.ofArray setValues
+        
+        System.GC.Collect ()
+        let watch = System.Diagnostics.Stopwatch.StartNew ()
+        let oldResult = Set.unionMany standardSets
+        watch.Stop ()
+        let oldTime = watch.Elapsed
+        watch.Reset ()
+
+        // Create fs-core-optimized sets from the values.
+        let optSets = Array.map FSharpCore.Set.ofArray setValues
+
+        System.GC.Collect ()
+        watch.Start ()
+        let newResult = FSharpCore.Set.unionMany optSets
+        watch.Stop ()
+        let newTime = watch.Elapsed
+
+        // Verify the results.
+        assert (Set.toArray oldResult = FSharpCore.Set.toArray newResult)
+
+        { Baseline = oldTime; Result = newTime; }
 
 
-// Warm-up
-printf "Warming up..."
-RandomSet.int32 10000 1000000 0.9
-|> ignore
-printfn "done."
-printfn ""
+(* Warm up *)
+do
+    printf "Warming up..."
+    RandomSet.int32Create 10000 1000000 0.9 |> ignore
+    RandomSet.int32Union 10 10 10000000 1.0 |> ignore
+    printfn "done."
+    printfn ""
 
-// Test 32-bit integers.
-let resultInt32 = RandomSet.int32 1000000 1000000 0.9
-printfn "Create Random Set<int> (n=1000000)"
-printfn "Baseline: %4f (ms)" resultInt32.Baseline.TotalMilliseconds
-printfn "Result: %4f (ms)" resultInt32.Result.TotalMilliseconds
-printfn ""
+(* Set creation *)
+do
+    // Test 32-bit integers.
+    let resultInt32Create = RandomSet.int32Create 1000000 System.Int32.MaxValue 0.85
+    printfn "Create Random Set<int> (n=1000000)"
+    printfn "Baseline: %4f (ms)" resultInt32Create.Baseline.TotalMilliseconds
+    printfn "Result: %4f (ms)" resultInt32Create.Result.TotalMilliseconds
+    printfn ""
 
-// Test 64-bit integers.
-let resultInt64 = RandomSet.int64 1000000 100000000L 0.9
-printfn "Create Random Set<int64> (n=1000000)"
-printfn "Baseline: %4f (ms)" resultInt64.Baseline.TotalMilliseconds
-printfn "Result: %4f (ms)" resultInt64.Result.TotalMilliseconds
-printfn ""
+    // Test 64-bit integers.
+    let resultInt64Create = RandomSet.int64Create 1000000 System.Int64.MaxValue 0.85
+    printfn "Create Random Set<int64> (n=1000000)"
+    printfn "Baseline: %4f (ms)" resultInt64Create.Baseline.TotalMilliseconds
+    printfn "Result: %4f (ms)" resultInt64Create.Result.TotalMilliseconds
+    printfn ""
+
+
+(* Set union *)
+do
+    // Test 32-bit integers.
+    let resultInt32Union = RandomSet.int32Union 1000 10000 System.Int32.MaxValue 0.85
+    printfn "Union Random Set<int> (n=1000, N=10000)"
+    printfn "Baseline: %4f (ms)" resultInt32Union.Baseline.TotalMilliseconds
+    printfn "Result: %4f (ms)" resultInt32Union.Result.TotalMilliseconds
+    printfn ""
+
+    // Test 64-bit integers.
+    let resultInt64Union = RandomSet.int64Union 1000 10000 System.Int64.MaxValue 0.85
+    printfn "Union Random Set<int64> (n=1000, N=10000)"
+    printfn "Baseline: %4f (ms)" resultInt64Union.Baseline.TotalMilliseconds
+    printfn "Result: %4f (ms)" resultInt64Union.Result.TotalMilliseconds
+    printfn ""
+    
+
 
 
 
