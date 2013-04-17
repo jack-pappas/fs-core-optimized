@@ -29,34 +29,40 @@ module Create =
         let values = RandomArray.int32 count maxValue density
         System.GC.Collect ()
         let watch = System.Diagnostics.Stopwatch.StartNew ()
-        let oldSet = Set.ofArray values
+        let baseline = Set.ofArray values
         watch.Stop ()
-        let oldTime = watch.Elapsed
+        let baselineTime = watch.Elapsed
         watch.Reset ()
         System.GC.Collect ()
         watch.Start ()
-        let newSet = FSharpCore.Set.ofArray values
+        let result1 = FSharpCore.Set.ofArray values
         watch.Stop ()
-        let newTime = watch.Elapsed
+        let result1Time = watch.Elapsed
+        watch.Reset ()
+        System.GC.Collect ()
+        watch.Start ()
+        let result2 = IntSet.ofArray values
+        watch.Stop ()
+        let result2Time = watch.Elapsed
 
-        { Baseline = oldTime; Result = newTime; }
+        { Baseline = baselineTime; Result1 = result1Time; Result2 = result2Time; }
 
     //
     let int64 count maxValue density =
         let values = RandomArray.int64 count maxValue density
         System.GC.Collect ()
         let watch = System.Diagnostics.Stopwatch.StartNew ()
-        let _ = Set.ofArray values
+        let baseline = Set.ofArray values
         watch.Stop ()
-        let oldTime = watch.Elapsed
+        let baselineTime = watch.Elapsed
         watch.Reset ()
         System.GC.Collect ()
         watch.Start ()
-        let _ = FSharpCore.Set.ofArray values
+        let result1 = FSharpCore.Set.ofArray values
         watch.Stop ()
-        let newTime = watch.Elapsed
+        let result1Time = watch.Elapsed
 
-        { Baseline = oldTime; Result = newTime; }
+        { Baseline = baselineTime; Result = result1Time; }
 
 
 /// Functions for benchmarking the set union operation.
@@ -72,9 +78,9 @@ module Union =
         
         System.GC.Collect ()
         let watch = System.Diagnostics.Stopwatch.StartNew ()
-        let oldResult = Set.unionMany standardSets
+        let baseline = Set.unionMany standardSets
         watch.Stop ()
-        let oldTime = watch.Elapsed
+        let baselineTime = watch.Elapsed
         watch.Reset ()
 
         // Create fs-core-optimized sets from the values.
@@ -82,14 +88,24 @@ module Union =
 
         System.GC.Collect ()
         watch.Start ()
-        let newResult = FSharpCore.Set.unionMany optSets
+        let result1 = FSharpCore.Set.unionMany optSets
         watch.Stop ()
-        let newTime = watch.Elapsed
+        let result1Time = watch.Elapsed
+
+//        // Create ExtCore.IntSet sets from the values.
+//        let intSets = Array.map IntSet.ofArray setValues
+//
+//        System.GC.Collect ()
+//        watch.Start ()
+//        let result2 = IntSet.unionMany optSets
+//        watch.Stop ()
+//        let result2Time = watch.Elapsed
 
         // Verify the results.
-        assert (Set.toArray oldResult = FSharpCore.Set.toArray newResult)
+        assert (Set.toArray baseline = FSharpCore.Set.toArray result1)
 
-        { Baseline = oldTime; Result = newTime; }
+        { Baseline = baselineTime; Result = result1Time; }
+        //{ Baseline = baselineTime; Result1 = result1Time; Result2 = result2Time; }
 
     //
     let int64 elementsPerSet setCount maxValue density =
@@ -135,9 +151,9 @@ module Intersect =
         
         System.GC.Collect ()
         let watch = System.Diagnostics.Stopwatch.StartNew ()
-        let oldResult = Set.intersectMany standardSets
+        let baseline = Set.intersectMany standardSets
         watch.Stop ()
-        let oldTime = watch.Elapsed
+        let baselineTime = watch.Elapsed
         watch.Reset ()
 
         // Create fs-core-optimized sets from the values.
@@ -145,14 +161,24 @@ module Intersect =
 
         System.GC.Collect ()
         watch.Start ()
-        let newResult = FSharpCore.Set.intersectMany optSets
+        let result1 = FSharpCore.Set.intersectMany optSets
         watch.Stop ()
-        let newTime = watch.Elapsed
+        let result1Time = watch.Elapsed
+
+//        // Create ExtCore.IntSet sets from the values.
+//        let intSets = Array.map IntSet.ofArray setValues
+//
+//        System.GC.Collect ()
+//        watch.Start ()
+//        let result2 = IntSet.intersectMany optSets
+//        watch.Stop ()
+//        let result2Time = watch.Elapsed
 
         // Verify the results.
-        assert (Set.toArray oldResult = FSharpCore.Set.toArray newResult)
+        assert (Set.toArray baseline = FSharpCore.Set.toArray result1)
 
-        { Baseline = oldTime; Result = newTime; }
+        { Baseline = baselineTime; Result = result1Time; }
+        //{ Baseline = baselineTime; Result1 = result1Time; Result2 = result2Time; }
 
     //
     let int64 elementsPerSet setCount maxValue density =

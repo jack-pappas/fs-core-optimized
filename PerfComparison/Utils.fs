@@ -82,7 +82,7 @@ module Helpers =
     /// Print timing results.
     let printTimings (result : TestResult<TimeSpan>) =
         printfn "Baseline: %4f (ms)" result.Baseline.TotalMilliseconds
-        printfn "Result: %4f (ms)" result.Result.TotalMilliseconds
+        printfn "Result  : %4f (ms)" result.Result.TotalMilliseconds
         printfn ""
 
     /// Print timing results.

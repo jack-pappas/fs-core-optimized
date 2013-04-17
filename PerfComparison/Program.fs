@@ -45,7 +45,7 @@ do
     // Test 32-bit integers.
     let resultInt32 = Create.int32 1000000 System.Int32.MaxValue 0.85
     printfn "Create Random Set<int> (n=1000000)"
-    printTimings resultInt32
+    printTimings3 resultInt32
 
     // Test 64-bit integers.
     let resultInt64 = Create.int64 1000000 System.Int64.MaxValue 0.85
