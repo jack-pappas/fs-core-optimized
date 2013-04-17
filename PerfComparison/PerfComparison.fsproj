@@ -53,6 +53,8 @@
   <ItemGroup>
     <None Include="App.config" />
     <None Include="packages.config" />
+    <Compile Include="Utils.fs" />
+    <Compile Include="Tests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
