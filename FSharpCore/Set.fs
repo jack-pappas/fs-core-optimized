@@ -39,29 +39,73 @@ type internal SetTree<'T when 'T : comparison> =
     // Left-Child, Right-Child, Value, Height
     | Node of SetTree<'T> * SetTree<'T> * 'T * uint32
 
-#if CHECKED
-    /// Implementation. Returns the height of a SetTree.
-    static member private ComputeHeightRec (tree : SetTree<'T>) cont =
-        match tree with
-        | Empty ->
-            cont 0u
-        | Node (l, r, _, _) ->
-            SetTree.ComputeHeightRec l <| fun height_l ->
-            SetTree.ComputeHeightRec r <| fun height_r ->
-                (max height_l height_r) + 1u
-                |> cont
+    //
+    static member private CompareStacks (comparer : IComparer<'T>, l1 : SetTree<'T> list, l2 : SetTree<'T> list) : int =
+        match l1, l2 with
+        | [], [] -> 0
+        | [], _ -> -1
+        | _, [] -> 1
+        | (Empty :: t1), (Empty :: t2) ->
+            SetTree.CompareStacks (comparer, t1, t2)
+        | (Node (Empty, Empty, n1k, _) :: t1), (Node (Empty, Empty, n2k, _) :: t2) ->
+            match comparer.Compare (n1k, n2k) with
+            | 0 ->
+                SetTree.CompareStacks (comparer, t1, t2)
+            | c -> c
 
-    /// Returns the height of a SetTree.
-    static member private ComputeHeight (tree : SetTree<'T>) =
-        SetTree.ComputeHeightRec tree id
+        | (Node (Empty, Empty, n1k, _) :: t1), (Node (Empty, n2r, n2k, _) :: t2) ->
+            match comparer.Compare (n1k, n2k) with
+            | 0 ->
+                SetTree.CompareStacks (comparer, Empty :: t1, n2r :: t2)
+            | c -> c
+
+        | (Node (Empty, n1r, n1k, _) :: t1), (Node (Empty, Empty, n2k, _) :: t2) ->
+            match comparer.Compare (n1k, n2k) with
+            | 0 ->
+                SetTree.CompareStacks (comparer, n1r :: t1, Empty :: t2)
+            | c -> c
+
+        | (Node (Empty, n1r, n1k, _) :: t1), (Node (Empty, n2r, n2k, _) :: t2) ->
+            match comparer.Compare (n1k, n2k) with
+            | 0 ->
+                SetTree.CompareStacks (comparer, n1r :: t1, n2r :: t2)
+            | c -> c
+
+        | ((Node (Empty, Empty, n1k, _) :: t1) as l1), _ ->
+            SetTree.CompareStacks (comparer, Empty :: l1, l2)
         
-    /// Determines if a SetTree is correctly formed.
-    /// It isn't necessary to call this at run-time, though it may be useful for asserting
-    /// the correctness of functions which weren't extracted from the Isabelle/HOL theory.
+        | (Node (n1l, n1r, n1k, _) :: t1), _ ->
+            SetTree.CompareStacks (comparer, n1l :: Node (Empty, n1r, n1k, 0u) :: t1, l2)
+        
+        | _, ((Node (Empty, Empty, n2k, _) :: t2) as l2) ->
+            SetTree.CompareStacks (comparer, l1, Empty :: l2)
+        
+        | _, (Node (n2l, n2r, n2k, _) :: t2) ->
+            SetTree.CompareStacks (comparer, l1, n2l :: Node (Empty, n2r, n2k, 0u) :: t2)
+                
+    //
+    static member Compare (comparer : IComparer<'T>, s1 : SetTree<'T>, s2 : SetTree<'T>) : int =
+        match s1, s2 with
+        | Empty, Empty -> 0
+        | Empty, _ -> -1
+        | _, Empty -> 1
+        | _ ->
+            SetTree<'T>.CompareStacks (comparer, [s1], [s2])
+
+    /// Computes the height of a SetTree (rather than returning the height value stored in it's root).
+    //[<Pure>]
+    static member private ComputeHeight (tree : SetTree<'T>) =
+        match tree with
+        | Empty -> 0u
+        | Node (l, r, _, _) ->
+            1u + max (SetTree.ComputeHeight l) (SetTree.ComputeHeight r)
+        
+    /// Determines if a SetTree is correctly formed, i.e., it respects the AVL balancing rules.
+    //[<Pure; ContractInvariantMethod>]
     static member private AvlInvariant (tree : SetTree<'T>) =
         match tree with
         | Empty -> true
-        | Node (l, r, x, h) ->
+        | Node (l, r, _, h) ->
             let height_l = SetTree.ComputeHeight l
             let height_r = SetTree.ComputeHeight r
             height_l = height_r
@@ -69,30 +113,77 @@ type internal SetTree<'T when 'T : comparison> =
             && h = ((max height_l height_r) + 1u)
             && SetTree.AvlInvariant l
             && SetTree.AvlInvariant r
-#endif
 
     /// Returns the height of a SetTree.
-    static member inline private Height (tree : SetTree<'T>) =
+    //[<Pure>]
+    static member (*inline*) Height (tree : SetTree<'T>) =
         match tree with
         | Empty -> 0u
         | Node (_,_,_,h) -> h
 
+    /// Returns the absolute difference in heights between two SetTrees.
+    //[<Pure>]
+    static member private HeightDiff (t1, t2 : SetTree<'T>) =
+        (max (SetTree.Height t1) (SetTree.Height t2)) - (min (SetTree.Height t1) (SetTree.Height t2))
+
     /// Determines if a SetTree is empty.
-    static member inline IsEmptyTree (tree : SetTree<'T>) =
+    //[<Pure>]
+    static member (*inline*) IsEmptyTree (tree : SetTree<'T>) =
         match tree with
         | Empty -> true
         | Node (_,_,_,_) -> false
 
+    /// Gets the maximum (greatest) value stored in the SetTree.
+    static member MaxElement (tree : SetTree<'T>) =
+        match tree with
+        | Empty ->
+            invalidArg "tree" "The tree is empty."
+        | Node (_, Empty, n, _) ->
+            n
+        | Node (_, right, _, _) ->
+            SetTree.MaxElement right
+
+    /// Gets the minimum (least) value stored in the SetTree.
+    static member MinElement (tree : SetTree<'T>) =
+        match tree with
+        | Empty ->
+            invalidArg "tree" "The tree is empty."
+        | Node (Empty, _, n, _) ->
+            n
+        | Node (left, _, _, _) ->
+            SetTree.MinElement left
+
+    /// Determines if a SetTree contains a specified value.
+    //[<Pure>]
+    static member Contains (comparer : IComparer<'T>, tree : SetTree<'T>, value : 'T) =
+        match tree with
+        | Empty ->
+            false
+        | Node (l, r, n, _) ->
+            let comparison = comparer.Compare (value, n)
+            if comparison = 0 then      // value = n
+                true
+            elif comparison < 0 then    // value < n
+                SetTree.Contains (comparer, l, value)
+            else                        // value > n
+                SetTree.Contains (comparer, r, value)
+
     /// Creates a SetTree whose root node holds the specified value
     /// and the specified left and right subtrees.
-    static member inline private Create (value, l, r : SetTree<'T>) =
+    static member inline Create (value, l, r : SetTree<'T>) =
+        // Preconditions
+        // TODO : Add assertions for debugging/testing
         Node (l, r, value, (max (SetTree.Height l) (SetTree.Height r)) + 1u)
 
     /// Creates a SetTree containing the specified value.
     static member Singleton value : SetTree<'T> =
         SetTree.Create (value, Empty, Empty)
 
+    //
     static member private mkt_bal_l (n, l, r : SetTree<'T>) =
+        // Preconditions
+        // TODO : Add assertions for debugging/testing
+
         if SetTree.Height l = SetTree.Height r + 2u then
             match l with
             | Empty ->
@@ -109,7 +200,11 @@ type internal SetTree<'T when 'T : comparison> =
         else
             SetTree.Create (n, l, r)
 
+    //
     static member private mkt_bal_r (n, l, r : SetTree<'T>) =
+        // Preconditions
+        // TODO : Add assertions for debugging/testing
+
         if SetTree.Height r = SetTree.Height l + 2u then
             match r with
             | Empty ->
@@ -126,155 +221,157 @@ type internal SetTree<'T when 'T : comparison> =
         else
             SetTree.Create (n, l, r)
 
+(* NOTE :   The DeleteMin, DeleteMax, DeleteRoot, TryDeleteMin, and TryDeleteMax methods use the
+            'private' modifier here because they're not implemented/exposed by the standard F# Set type,
+            but some of them are used by this implementation.
+            If you are using a custom FSharp.Core implementation and would like to expose these
+            functions for use in your own code, just remove the 'private' modifiers. *)
+
+    /// Removes the minimum (least) value from an SetTree,
+    /// returning the value along with the updated tree.
+    static member private DeleteMin (tree : SetTree<'T>) =
+        // Preconditions
+        // TODO : Add assertions for debugging/testing.
+
+        match tree with
+        | Empty ->
+            invalidArg "tree" "Cannot delete the minimum value from an empty tree."
+        | Node (l, Empty, n, _) ->
+            n, l
+        | Node (left, r, n, _) ->
+            let na, l = SetTree.DeleteMin left
+            na, SetTree.mkt_bal_r (n, l, r)
+
+    /// Removes the maximum (greatest) value from an SetTree,
+    /// returning the value along with the updated tree.
     static member private DeleteMax (tree : SetTree<'T>) =
+        // Preconditions
+        // TODO : Add assertions for debugging/testing.
+
         match tree with
         | Empty ->
             invalidArg "tree" "Cannot delete the maximum value from an empty tree."
         | Node (l, Empty, n, _) ->
             n, l
-        | Node (l, (Node (_,_,_,_) as right), n, _) ->
+        | Node (l, right, n, _) ->
             let na, r = SetTree.DeleteMax right
             na, SetTree.mkt_bal_l (n, l, r)
 
+    /// Removes the root (median) value from an SetTree,
+    /// returning the value along with the updated tree.
     static member private DeleteRoot (tree : SetTree<'T>) =
+        // Preconditions
+        // TODO : Add assertions for debugging/testing.
+
         match tree with
         | Empty ->
             invalidArg "tree" "Cannot delete the root of an empty tree."
         | Node (Empty, r, _, _) -> r
-        | Node ((Node (_,_,_,_) as left), Empty, _, _) ->
+        | Node (left, Empty, _, _) ->
             left
-        | Node ((Node (_,_,_,_) as left), (Node (_,_,_,_) as right), _, _) ->
-            let new_n, l = SetTree.DeleteMax left
-            SetTree.mkt_bal_r (new_n, l, right)
+        | Node (left, r, _, _) ->
+            let root, l = SetTree.DeleteMax left
+            SetTree.mkt_bal_r (root, l, r)
 
-    /// Determines if a SetTree contains a specified value.
-    static member Contains (comparer : IComparer<'T>, tree : SetTree<'T>, value : 'T) =
+    /// Removes the minimum (least) value from a SetTree,
+    /// returning the value along with the updated tree.
+    /// No exception is thrown if the tree is empty.
+    static member private TryDeleteMin (tree : SetTree<'T>) =
+        // Preconditions
+        // TODO : Add assertions for debugging/testing.
+
         match tree with
         | Empty ->
-            false
-        | Node (l, r, n, _) ->
-            let comparison = comparer.Compare (value, n)
-            if comparison = 0 then      // value = n
-                true
-            elif comparison < 0 then    // value < n
-                SetTree.Contains (comparer, l, value)
-            else                        // value > n
-                SetTree.Contains (comparer, r, value)
+            None, tree
+        | Node (l, Empty, n, _) ->
+            Some n, l
+        | Node (left, r, n, _) ->
+            let na, l = SetTree.TryDeleteMin left
+            match na with
+            | None ->
+                na, l
+            | Some _ ->
+                na, SetTree.mkt_bal_r (n, l, r)
+
+    /// Removes the maximum (greatest) value from a SetTree,
+    /// returning the value along with the updated tree.
+    /// No exception is thrown if the tree is empty.
+    static member private TryDeleteMax (tree : SetTree<'T>) =
+        // Preconditions
+        // TODO : Add assertions for debugging/testing.
+
+        match tree with
+        | Empty ->
+            None, tree
+        | Node (l, Empty, n, _) ->
+            Some n, l
+        | Node (l, right, n, _) ->
+            let na, r = SetTree.TryDeleteMax right
+            match na with
+            | None ->
+                na, l
+            | Some _ ->
+                na, SetTree.mkt_bal_l (n, l, r)
 
     /// Removes the specified value from the tree.
     /// If the tree doesn't contain the value, no exception is thrown;
     /// the tree will be returned without modification.
     static member Delete (comparer : IComparer<'T>, tree : SetTree<'T>, value : 'T) =
+        // Preconditions
+        // TODO : Add assertions for debugging/testing.
+
         match tree with
         | Empty ->
             Empty
         | Node (l, r, n, _) ->
             let comparison = comparer.Compare (value, n)
-            if comparison = 0 then              // x = n
+            if comparison = 0 then
+                // x = n
                 SetTree.DeleteRoot tree
-            elif comparison < 0 then            // x < n
-                let la = SetTree.Delete (comparer, l, value)
-                SetTree.mkt_bal_r (n, la, r)
-            else                                // x > n
-                let a = SetTree.Delete (comparer, r, value)
-                SetTree.mkt_bal_l (n, l, a)
+            elif comparison < 0 then
+                // x < n
+                let l' = SetTree.Delete (comparer, l, value)
+
+                // Only rebalance the tree if an element was actually deleted.
+                if System.Object.ReferenceEquals (l', l) then tree
+                else SetTree.mkt_bal_r (n, l', r)
+            else
+                // x > n
+                let r' = SetTree.Delete (comparer, r, value)
+                
+                // Only rebalance the tree if an element was actually deleted.
+                if System.Object.ReferenceEquals (r', r) then tree
+                else SetTree.mkt_bal_l (n, l, r')
 
     /// Adds a value to a SetTree.
     /// If the tree already contains the value, no exception is thrown;
     /// the tree will be returned without modification.
     static member Insert (comparer : IComparer<'T>, tree : SetTree<'T>, value : 'T) =
+        // Preconditions
+        // TODO : Add assertions for debugging/testing.
+
         match tree with
         | Empty ->
             Node (Empty, Empty, value, 1u)
         | Node (l, r, n, _) ->
             let comparison = comparer.Compare (value, n)
-            if comparison = 0 then                              // x = n
+            if comparison = 0 then
+                // x = n
                 tree
-            elif comparison < 0 then                            // x < n
+            elif comparison < 0 then
+                // x < n
                 let l' = SetTree.Insert (comparer, l, value)
-                SetTree.mkt_bal_l (n, l', r)
-            else                                                // x > n
+
+                // Only rebalance the tree if an element was actually inserted.
+                if System.Object.ReferenceEquals (l', l) then tree
+                else SetTree.mkt_bal_l (n, l', r)
+            else
+                // x > n
                 let r' = SetTree.Insert (comparer, r, value)
-                SetTree.mkt_bal_r (n, l, r')
-
-    /// Gets the maximum (greatest) value stored in the SetTree.
-    static member MaxElement (tree : SetTree<'T>) =
-        match tree with
-        | Empty ->
-            invalidArg "tree" "The tree is empty."
-        | Node (_, Empty, n, _) ->
-            n
-        | Node (_, (Node (_,_,_,_) as right), _, _) ->
-            SetTree.MaxElement right
-
-    /// Gets the minimum (least) value stored in the SetTree.
-    static member MinElement (tree : SetTree<'T>) =
-        match tree with
-        | Empty ->
-            invalidArg "tree" "The tree is empty."
-        | Node (Empty, _, n, _) ->
-            n
-        | Node ((Node (_,_,_,_) as left), _, _, _) ->
-            SetTree.MinElement left
-
-(* NOTE :   The next few methods have been commented-out because they're not provided by the
-            standard F# Set type. Anyone using a custom FSharp.Core implementation is welcome
-            to uncomment and use these methods. *)
-(*
-    /// Extracts the minimum (least) value from a SetTree,
-    /// returning the value along with the updated tree.
-    static member ExtractMin (tree : SetTree<'T>) =
-        match tree with
-        | Empty ->
-            invalidArg "tree" "The tree is empty."
-        | Node (Empty, r, n, _) ->
-            n, r
-        | Node (Node (left, mid, a, _), r, x, _) ->
-            // Rebalance the tree at the same time we're traversing downwards
-            // to find the minimum value. This avoids the need to perform a
-            // second traversal to remove the element once it's found.
-            let n = SetTree.Create x mid r
-            SetTree.Create a left n
-            |> SetTree.ExtractMin
-
-    /// Extracts the minimum (least) value from a SetTree,
-    /// returning the value along with the updated tree.
-    /// No exception is thrown if the tree is empty.
-    static member TryExtractMin (tree : SetTree<'T>) =
-        // Is the tree empty?
-        if SetTree.IsEmptyTree tree then
-            None, tree
-        else
-            let minElement, tree = SetTree.ExtractMin tree
-            Some minElement, tree
-
-    /// Extracts the maximum (greatest) value from a SetTree,
-    /// returning the value along with the updated tree.
-    static member ExtractMax (tree : SetTree<'T>) =
-        match tree with
-        | Empty ->
-            invalidArg "tree" "The tree is empty."
-        | Node (l, Empty, n, _) ->
-            n, l
-        | Node (l, Node (mid, right, a, _), x, _) ->
-            // Rebalance the tree at the same time we're traversing downwards
-            // to find the maximum value. This avoids the need to perform a
-            // second traversal to remove the element once it's found.
-            let n = SetTree.Create x l mid
-            SetTree.Create a n right
-            |> SetTree.ExtractMax
-
-    /// Extracts the maximum (greatest) value from a SetTree,
-    /// returning the value along with the updated tree.
-    /// No exception is thrown if the tree is empty.
-    static member TryExtractMax (tree : SetTree<'T>) =
-        // Is the tree empty?
-        if SetTree.IsEmptyTree tree then
-            None, tree
-        else
-            let maxElement, tree = SetTree.ExtractMax tree
-            Some maxElement, tree
-*)
+                
+                // Only rebalance the tree if an element was actually inserted.
+                if System.Object.ReferenceEquals (r', r) then tree
+                else SetTree.mkt_bal_r (n, l, r')
 
     /// Counts the number of elements in the tree.
     static member Count (tree : SetTree<'T>) =
@@ -720,18 +817,30 @@ type internal SetTree<'T when 'T : comparison> =
             //   Union disjoint subproblems and then combine. 
             if h1 > h2 then
                 let lo, _, hi = SetTree.Split (comparer, t2, k1)
-                SetTree.Balance (
-                    comparer,
-                    SetTree.Union (comparer, t11, lo),
-                    SetTree.Union (comparer, t12, hi),
-                    k1)
+
+                // OPTIMIZE : It might not hurt to add a reference-equality check here to determine
+                // if t11 = lo or t12 = hi -- if we know they're the same, there's no need to perform
+                // the union operation on them.
+                let lo' = SetTree.Union (comparer, t11, lo)
+                let hi' = SetTree.Union (comparer, t12, hi)
+
+                // OPTIMIZE : After the union operations, lo' and hi' could possibly be the same
+                // (physically equal) as their originals (lo and hi). Can we exploit this to avoid
+                // balancing the tree? What would that tell us about the two sets?
+                SetTree.Balance (comparer, lo', hi', k1)
             else
                 let lo, _, hi = SetTree.Split (comparer, t1, k2)
-                SetTree.Balance (
-                    comparer,
-                    SetTree.Union (comparer, t21, lo),
-                    SetTree.Union (comparer, t22, hi),
-                    k2)
+
+                // OPTIMIZE : It might not hurt to add a reference-equality check here to determine
+                // if t11 = lo or t12 = hi -- if we know they're the same, there's no need to perform
+                // the union operation on them.
+                let lo' = SetTree.Union (comparer, t21, lo)
+                let hi' = SetTree.Union (comparer, t22, hi)
+
+                // OPTIMIZE : After the union operations, lo' and hi' could possibly be the same
+                // (physically equal) as their originals (lo and hi). Can we exploit this to avoid
+                // balancing the tree? What would that tell us about the two sets?
+                SetTree.Balance (comparer, lo', hi', k2)
 
     /// Implementation. Computes the intersection of two SetTrees.
     static member private IntersectionAux (comparer : IComparer<'T>, b, m, acc) : SetTree<'T> =
@@ -774,56 +883,6 @@ type internal SetTree<'T when 'T : comparison> =
         SetTree.Forall (fun x -> SetTree.Contains (comparer, set2, x)) set1
         && SetTree.Exists (fun x -> not (SetTree.Contains (comparer, set1, x))) set2
 
-    static member private CompareStacks (comparer : IComparer<'T>, l1 : SetTree<'T> list, l2 : SetTree<'T> list) : int =
-        match l1, l2 with
-        | [], [] -> 0
-        | [], _ -> -1
-        | _, [] -> 1
-        | (Empty :: t1), (Empty :: t2) ->
-            SetTree.CompareStacks (comparer, t1, t2)
-        | (Node (Empty, Empty, n1k, _) :: t1), (Node (Empty, Empty, n2k, _) :: t2) ->
-            match comparer.Compare (n1k, n2k) with
-            | 0 ->
-                SetTree.CompareStacks (comparer, t1, t2)
-            | c -> c
-
-        | (Node (Empty, Empty, n1k, _) :: t1), (Node (Empty, n2r, n2k, _) :: t2) ->
-            match comparer.Compare (n1k, n2k) with
-            | 0 ->
-                SetTree.CompareStacks (comparer, Empty :: t1, n2r :: t2)
-            | c -> c
-
-        | (Node (Empty, n1r, n1k, _) :: t1), (Node (Empty, Empty, n2k, _) :: t2) ->
-            match comparer.Compare (n1k, n2k) with
-            | 0 ->
-                SetTree.CompareStacks (comparer, n1r :: t1, Empty :: t2)
-            | c -> c
-
-        | (Node (Empty, n1r, n1k, _) :: t1), (Node (Empty, n2r, n2k, _) :: t2) ->
-            match comparer.Compare (n1k, n2k) with
-            | 0 ->
-                SetTree.CompareStacks (comparer, n1r :: t1, n2r :: t2)
-            | c -> c
-
-        | ((Node (Empty, Empty, n1k, _) :: t1) as l1), _ ->
-            SetTree.CompareStacks (comparer, Empty :: l1, l2)
-        
-        | (Node (n1l, n1r, n1k, _) :: t1), _ ->
-            SetTree.CompareStacks (comparer, n1l :: Node (Empty, n1r, n1k, 0u) :: t1, l2)
-        
-        | _, ((Node (Empty, Empty, n2k, _) :: t2) as l2) ->
-            SetTree.CompareStacks (comparer, l1, Empty :: l2)
-        
-        | _, (Node (n2l, n2r, n2k, _) :: t2) ->
-            SetTree.CompareStacks (comparer, l1, n2l :: Node (Empty, n2r, n2k, 0u) :: t2)
-                
-    static member Compare (comparer : IComparer<'T>, s1 : SetTree<'T>, s2 : SetTree<'T>) : int =
-        match s1, s2 with
-        | Empty, Empty -> 0
-        | Empty, _ -> -1
-        | _, Empty -> 1
-        | _ ->
-            SetTree<'T>.CompareStacks (comparer, [s1], [s2])
 
 (*** Imperative left-to-right iterators. ***)
 
