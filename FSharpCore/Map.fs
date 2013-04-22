@@ -39,25 +39,69 @@ type internal MapTree<'Key, 'Value when 'Key : comparison> =
     // Left-Child, Right-Child, Key/Value, Height
     | Node of MapTree<'Key, 'Value> * MapTree<'Key, 'Value> * KeyValuePair<'Key, 'Value> * uint32
 
-#if CHECKED
-    /// Implementation. Returns the height of a MapTree.
-    static member private ComputeHeightRec (tree : MapTree<'Key, 'Value>) cont =
-        match tree with
-        | Empty ->
-            cont 0u
-        | Node (l, r, _, _) ->
-            MapTree.ComputeHeightRec l <| fun height_l ->
-            MapTree.ComputeHeightRec r <| fun height_r ->
-                (max height_l height_r) + 1u
-                |> cont
+    //
+    static member private CompareStacks (comparer : IComparer<'Key>, l1 : MapTree<'Key, 'Value> list, l2 : MapTree<'Key, 'Value> list) : int =
+        match l1, l2 with
+        | [], [] -> 0
+        | [], _ -> -1
+        | _, [] -> 1
+        | (Empty :: t1), (Empty :: t2) ->
+            MapTree.CompareStacks (comparer, t1, t2)
+        | (Node (Empty, Empty, n1kvp, _) :: t1), (Node (Empty, Empty, n2kvp, _) :: t2) ->
+            match comparer.Compare (n1kvp.Key, n2kvp.Key) with
+            | 0 ->
+                MapTree.CompareStacks (comparer, t1, t2)
+            | c -> c
 
-    /// Returns the height of a MapTree.
-    static member private ComputeHeight (tree : MapTree<'Key, 'Value>) =
-        MapTree.ComputeHeightRec tree id
+        | (Node (Empty, Empty, n1kvp, _) :: t1), (Node (Empty, n2r, n2kvp, _) :: t2) ->
+            match comparer.Compare (n1kvp.Key, n2kvp.Key) with
+            | 0 ->
+                MapTree.CompareStacks (comparer, Empty :: t1, n2r :: t2)
+            | c -> c
+
+        | (Node (Empty, n1r, n1kvp, _) :: t1), (Node (Empty, Empty, n2kvp, _) :: t2) ->
+            match comparer.Compare (n1kvp.Key, n2kvp.Key) with
+            | 0 ->
+                MapTree.CompareStacks (comparer, n1r :: t1, Empty :: t2)
+            | c -> c
+
+        | (Node (Empty, n1r, n1kvp, _) :: t1), (Node (Empty, n2r, n2kvp, _) :: t2) ->
+            match comparer.Compare (n1kvp.Key, n2kvp.Key) with
+            | 0 ->
+                MapTree.CompareStacks (comparer, n1r :: t1, n2r :: t2)
+            | c -> c
+
+        | ((Node (Empty, Empty, n1kvp, _) :: t1) as l1), _ ->
+            MapTree.CompareStacks (comparer, Empty :: l1, l2)
         
-    /// Determines if a MapTree is correctly formed.
-    /// It isn't necessary to call this at run-time, though it may be useful for asserting
-    /// the correctness of functions which weren't extracted from the Isabelle/HOL theory.
+        | (Node (n1l, n1r, n1kvp, _) :: t1), _ ->
+            MapTree.CompareStacks (comparer, n1l :: Node (Empty, n1r, n1kvp, 0u) :: t1, l2)
+        
+        | _, ((Node (Empty, Empty, n2kvp, _) :: t2) as l2) ->
+            MapTree.CompareStacks (comparer, l1, Empty :: l2)
+        
+        | _, (Node (n2l, n2r, n2kvp, _) :: t2) ->
+            MapTree.CompareStacks (comparer, l1, n2l :: Node (Empty, n2r, n2kvp, 0u) :: t2)
+                
+    //
+    static member Compare (comparer : IComparer<'Key>, s1 : MapTree<'Key, 'Value>, s2 : MapTree<'Key, 'Value>) : int =
+        match s1, s2 with
+        | Empty, Empty -> 0
+        | Empty, _ -> -1
+        | _, Empty -> 1
+        | _ ->
+            MapTree<'Key, 'Value>.CompareStacks (comparer, [s1], [s2])
+
+    /// Computes the height of a MapTree (rather than returning the height value stored in it's root).
+    //[<Pure>]
+    static member private ComputeHeight (tree : MapTree<'Key, 'Value>) =
+        match tree with
+        | Empty -> 0u
+        | Node (l, r, _, _) ->
+            1u + max (MapTree.ComputeHeight l) (MapTree.ComputeHeight r)
+        
+    /// Determines if a MapTree is correctly formed, i.e., it respects the AVL balancing rules.
+    //[<Pure; ContractInvariantMethod>]
     static member private AvlInvariant (tree : MapTree<'Key, 'Value>) =
         match tree with
         | Empty -> true
@@ -69,19 +113,81 @@ type internal MapTree<'Key, 'Value when 'Key : comparison> =
             && h = ((max height_l height_r) + 1u)
             && MapTree.AvlInvariant l
             && MapTree.AvlInvariant r
-#endif
 
     /// Returns the height of a MapTree.
-    static member inline private Height (tree : MapTree<'Key, 'Value>) =
+    //[<Pure>]
+    static member (*inline*) Height (tree : MapTree<'Key, 'Value>) =
         match tree with
         | Empty -> 0u
         | Node (_,_,_,h) -> h
 
+    /// Returns the absolute difference in heights between two MapTrees.
+    //[<Pure>]
+    static member private HeightDiff (t1, t2 : MapTree<'Key, 'Value>) =
+        (max (MapTree.Height t1) (MapTree.Height t2)) - (min (MapTree.Height t1) (MapTree.Height t2))
+
     /// Determines if a MapTree is empty.
-    static member inline IsEmptyTree (tree : MapTree<'Key, 'Value>) =
+    //[<Pure>]
+    static member (*inline*) IsEmptyTree (tree : MapTree<'Key, 'Value>) =
         match tree with
         | Empty -> true
         | Node (_,_,_,_) -> false
+
+    /// Gets the maximum (greatest) value stored in the MapTree.
+    static member MaxElement (tree : MapTree<'Key, 'Value>) =
+        match tree with
+        | Empty ->
+            invalidArg "tree" "The tree is empty."
+        | Node (_, Empty, n, _) ->
+            n
+        | Node (_, right, _, _) ->
+            MapTree.MaxElement right
+
+    /// Gets the minimum (least) value stored in the MapTree.
+    static member MinElement (tree : MapTree<'Key, 'Value>) =
+        match tree with
+        | Empty ->
+            invalidArg "tree" "The tree is empty."
+        | Node (Empty, _, n, _) ->
+            n
+        | Node (left, _, _, _) ->
+            MapTree.MinElement left
+
+    /// Determines if a MapTree contains a specified value.
+    //[<Pure>]
+    static member ContainsKey (comparer : IComparer<'Key>, tree : MapTree<'Key, 'Value>, key) : bool =
+        // Preconditions
+        // TODO : Add assertions for debugging/testing.
+
+        match tree with
+        | Empty ->
+            false
+        | Node (l, r, kvp, _) ->
+            let comparison = comparer.Compare (key, kvp.Key)
+            if comparison = 0 then      // key = k
+                true
+            elif comparison < 0 then    // key < k
+                MapTree.ContainsKey (comparer, l, key)
+            else                        // key > k
+                MapTree.ContainsKey (comparer, r, key)
+
+    /// Try to find a value associated with the specified key in a MapTree.
+    //[<Pure>]
+    static member TryFind (comparer : IComparer<'Key>, tree : MapTree<'Key, 'Value>, key) : 'Value option =
+        // Preconditions
+        // TODO : Add assertions for debugging/testing.
+        
+        match tree with
+        | Empty ->
+            None
+        | Node (l, r, kvp, _) ->
+            let comparison = comparer.Compare (key, kvp.Key)
+            if comparison = 0 then      // key = k
+                Some kvp.Value
+            elif comparison < 0 then    // key < k
+                MapTree.TryFind (comparer, l, key)
+            else                        // key > k
+                MapTree.TryFind (comparer, r, key)
 
     /// Creates a MapTree whose root node holds the specified value
     /// and the specified left and right subtrees.
@@ -93,6 +199,9 @@ type internal MapTree<'Key, 'Value when 'Key : comparison> =
         MapTree.Create (kvp, Empty, Empty)
 
     static member private mkt_bal_l (n, l, r : MapTree<'Key, 'Value>) =
+        // Preconditions
+        // TODO : Add assertions for debugging/testing.
+
         if MapTree.Height l = MapTree.Height r + 2u then
             match l with
             | Empty ->
@@ -110,6 +219,9 @@ type internal MapTree<'Key, 'Value when 'Key : comparison> =
             MapTree.Create (n, l, r)
 
     static member private mkt_bal_r (n, l, r : MapTree<'Key, 'Value>) =
+        // Preconditions
+        // TODO : Add assertions for debugging/testing.
+        
         if MapTree.Height r = MapTree.Height l + 2u then
             match r with
             | Empty ->
@@ -126,54 +238,97 @@ type internal MapTree<'Key, 'Value when 'Key : comparison> =
         else
             MapTree.Create (n, l, r)
 
+(* NOTE :   The DeleteMin, DeleteMax, DeleteRoot, TryDeleteMin, and TryDeleteMax methods use the
+            'private' modifier here because they're not implemented/exposed by the standard F# Map type,
+            but some of them are used by this implementation.
+            If you are using a custom FSharp.Core implementation and would like to expose these
+            functions for use in your own code, just remove the 'private' modifiers. *)
+
+    /// Removes the minimum (least) value from an MapTree,
+    /// returning the value along with the updated tree.
+    static member private DeleteMin (tree : MapTree<'Key, 'Value>) =
+        // Preconditions
+        // TODO : Add assertions for debugging/testing.
+
+        match tree with
+        | Empty ->
+            invalidArg "tree" "Cannot delete the minimum value from an empty tree."
+        | Node (l, Empty, n, _) ->
+            n, l
+        | Node (left, r, n, _) ->
+            let na, l = MapTree.DeleteMin left
+            na, MapTree.mkt_bal_r (n, l, r)
+
+    /// Removes the maximum (greatest) value from an MapTree,
+    /// returning the value along with the updated tree.
     static member private DeleteMax (tree : MapTree<'Key, 'Value>) =
+        // Preconditions
+        // TODO : Add assertions for debugging/testing.
+
         match tree with
         | Empty ->
             invalidArg "tree" "Cannot delete the maximum value from an empty tree."
         | Node (l, Empty, n, _) ->
             n, l
-        | Node (l, (Node (_,_,_,_) as right), n, _) ->
+        | Node (l, right, n, _) ->
             let na, r = MapTree.DeleteMax right
             na, MapTree.mkt_bal_l (n, l, r)
 
+    /// Removes the root (median) value from an MapTree,
+    /// returning the value along with the updated tree.
     static member private DeleteRoot (tree : MapTree<'Key, 'Value>) =
+        // Preconditions
+        // TODO : Add assertions for debugging/testing.
+
         match tree with
         | Empty ->
             invalidArg "tree" "Cannot delete the root of an empty tree."
         | Node (Empty, r, _, _) -> r
-        | Node ((Node (_,_,_,_) as left), Empty, _, _) ->
+        | Node (left, Empty, _, _) ->
             left
-        | Node ((Node (_,_,_,_) as left), (Node (_,_,_,_) as right), _, _) ->
-            let new_n, l = MapTree.DeleteMax left
-            MapTree.mkt_bal_r (new_n, l, right)
+        | Node (left, r, _, _) ->
+            let root, l = MapTree.DeleteMax left
+            MapTree.mkt_bal_r (root, l, r)
 
-    /// Determines if a MapTree contains a specified value.
-    static member ContainsKey (comparer : IComparer<'Key>, tree : MapTree<'Key, 'Value>, key) : bool =
+    /// Removes the minimum (least) value from a MapTree,
+    /// returning the value along with the updated tree.
+    /// No exception is thrown if the tree is empty.
+    static member private TryDeleteMin (tree : MapTree<'Key, 'Value>) =
+        // Preconditions
+        // TODO : Add assertions for debugging/testing.
+
         match tree with
         | Empty ->
-            false
-        | Node (l, r, kvp, _) ->
-            let comparison = comparer.Compare (key, kvp.Key)
-            if comparison = 0 then      // key = k
-                true
-            elif comparison < 0 then    // key < k
-                MapTree.ContainsKey (comparer, l, key)
-            else                        // key > k
-                MapTree.ContainsKey (comparer, r, key)
+            None, tree
+        | Node (l, Empty, n, _) ->
+            Some n, l
+        | Node (left, r, n, _) ->
+            let na, l = MapTree.TryDeleteMin left
+            match na with
+            | None ->
+                na, l
+            | Some _ ->
+                na, MapTree.mkt_bal_r (n, l, r)
 
-    /// Try to find a value associated with the specified key in a MapTree.
-    static member TryFind (comparer : IComparer<'Key>, tree : MapTree<'Key, 'Value>, key) : 'Value option =
+    /// Removes the maximum (greatest) value from a MapTree,
+    /// returning the value along with the updated tree.
+    /// No exception is thrown if the tree is empty.
+    static member private TryDeleteMax (tree : MapTree<'Key, 'Value>) =
+        // Preconditions
+        // TODO : Add assertions for debugging/testing.
+
         match tree with
         | Empty ->
-            None
-        | Node (l, r, kvp, _) ->
-            let comparison = comparer.Compare (key, kvp.Key)
-            if comparison = 0 then      // key = k
-                Some kvp.Value
-            elif comparison < 0 then    // key < k
-                MapTree.TryFind (comparer, l, key)
-            else                        // key > k
-                MapTree.TryFind (comparer, r, key)
+            None, tree
+        | Node (l, Empty, n, _) ->
+            Some n, l
+        | Node (l, right, n, _) ->
+            let na, r = MapTree.TryDeleteMax right
+            match na with
+            | None ->
+                na, l
+            | Some _ ->
+                na, MapTree.mkt_bal_l (n, l, r)
 
     /// Removes the specified value from the tree.
     /// If the tree doesn't contain the value, no exception is thrown;
@@ -184,14 +339,23 @@ type internal MapTree<'Key, 'Value when 'Key : comparison> =
             Empty
         | Node (l, r, kvp, _) as tree ->
             let comparison = comparer.Compare (key, kvp.Key)
-            if comparison = 0 then              // key = k
+            if comparison = 0 then
+                // key = k
                 MapTree.DeleteRoot tree
-            elif comparison < 0 then            // key < k
-                let la = MapTree.Delete (comparer, l, key)
-                MapTree.mkt_bal_r (kvp, la, r)
-            else                                // key > k
-                let a = MapTree.Delete (comparer, r, key)
-                MapTree.mkt_bal_l (kvp, l, a)
+            elif comparison < 0 then
+                // key < k
+                let l' = MapTree.Delete (comparer, l, key)
+
+                // Only rebalance the tree if an element was actually deleted.
+                if System.Object.ReferenceEquals (l', l) then tree
+                else MapTree.mkt_bal_r (kvp, l', r)
+            else
+                // key > k
+                let r' = MapTree.Delete (comparer, r, key)
+                
+                // Only rebalance the tree if an element was actually deleted.
+                if System.Object.ReferenceEquals (r', r) then tree
+                else MapTree.mkt_bal_l (kvp, l, r')
 
     /// Adds a value to a MapTree.
     /// If the tree already contains the value, no exception is thrown;
@@ -202,18 +366,27 @@ type internal MapTree<'Key, 'Value when 'Key : comparison> =
             Node (Empty, Empty, newKvp, 1u)
         | Node (l, r, kvp, h) as tree ->
             let comparison = comparer.Compare (newKvp.Key, kvp.Key)
-            if comparison = 0 then                              // x = k
+            if comparison = 0 then
+                // key = k
                 // Try to determine if the new value is the same as the existing value;
                 // if so, we can just return the original tree instead of creating a new one.
                 if Unchecked.equals kvp.Value newKvp.Value then tree
                 else
                     Node (l, r, newKvp, h)
-            elif comparison < 0 then                            // x < k
+            elif comparison < 0 then
+                // key < k
                 let l' = MapTree.Insert (comparer, l, newKvp)
-                MapTree.mkt_bal_l (kvp, l', r)
-            else                                                // x > k
+
+                // Only rebalance the tree if an element was actually inserted.
+                if System.Object.ReferenceEquals (l', l) then tree
+                else MapTree.mkt_bal_l (kvp, l', r)
+            else
+                // key > k
                 let r' = MapTree.Insert (comparer, r, newKvp)
-                MapTree.mkt_bal_r (kvp, l, r')
+
+                // Only rebalance the tree if an element was actually inserted.
+                if System.Object.ReferenceEquals (r', r) then tree
+                else MapTree.mkt_bal_r (kvp, l, r')
 
     /// Counts the number of elements in the tree.
     static member Count (tree : MapTree<'Key, 'Value>) =
@@ -642,56 +815,6 @@ type internal MapTree<'Key, 'Value when 'Key : comparison> =
         MapTree.IterKvp elements.Add tree
         elements.ToArray ()
 
-    static member private CompareStacks (comparer : IComparer<'Key>, l1 : MapTree<'Key, 'Value> list, l2 : MapTree<'Key, 'Value> list) : int =
-        match l1, l2 with
-        | [], [] -> 0
-        | [], _ -> -1
-        | _, [] -> 1
-        | (Empty :: t1), (Empty :: t2) ->
-            MapTree.CompareStacks (comparer, t1, t2)
-        | (Node (Empty, Empty, n1kvp, _) :: t1), (Node (Empty, Empty, n2kvp, _) :: t2) ->
-            match comparer.Compare (n1kvp.Key, n2kvp.Key) with
-            | 0 ->
-                MapTree.CompareStacks (comparer, t1, t2)
-            | c -> c
-
-        | (Node (Empty, Empty, n1kvp, _) :: t1), (Node (Empty, n2r, n2kvp, _) :: t2) ->
-            match comparer.Compare (n1kvp.Key, n2kvp.Key) with
-            | 0 ->
-                MapTree.CompareStacks (comparer, Empty :: t1, n2r :: t2)
-            | c -> c
-
-        | (Node (Empty, n1r, n1kvp, _) :: t1), (Node (Empty, Empty, n2kvp, _) :: t2) ->
-            match comparer.Compare (n1kvp.Key, n2kvp.Key) with
-            | 0 ->
-                MapTree.CompareStacks (comparer, n1r :: t1, Empty :: t2)
-            | c -> c
-
-        | (Node (Empty, n1r, n1kvp, _) :: t1), (Node (Empty, n2r, n2kvp, _) :: t2) ->
-            match comparer.Compare (n1kvp.Key, n2kvp.Key) with
-            | 0 ->
-                MapTree.CompareStacks (comparer, n1r :: t1, n2r :: t2)
-            | c -> c
-
-        | ((Node (Empty, Empty, n1kvp, _) :: t1) as l1), _ ->
-            MapTree.CompareStacks (comparer, Empty :: l1, l2)
-        
-        | (Node (n1l, n1r, n1kvp, _) :: t1), _ ->
-            MapTree.CompareStacks (comparer, n1l :: Node (Empty, n1r, n1kvp, 0u) :: t1, l2)
-        
-        | _, ((Node (Empty, Empty, n2kvp, _) :: t2) as l2) ->
-            MapTree.CompareStacks (comparer, l1, Empty :: l2)
-        
-        | _, (Node (n2l, n2r, n2kvp, _) :: t2) ->
-            MapTree.CompareStacks (comparer, l1, n2l :: Node (Empty, n2r, n2kvp, 0u) :: t2)
-                
-    static member Compare (comparer : IComparer<'Key>, s1 : MapTree<'Key, 'Value>, s2 : MapTree<'Key, 'Value>) : int =
-        match s1, s2 with
-        | Empty, Empty -> 0
-        | Empty, _ -> -1
-        | _, Empty -> 1
-        | _ ->
-            MapTree<'Key, 'Value>.CompareStacks (comparer, [s1], [s2])
 
 (*** Imperative left-to-right iterators. ***)
 
