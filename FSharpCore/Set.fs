@@ -380,7 +380,7 @@ type internal SetTree<'T when 'T : comparison> =
         | Node (Empty, Empty, _, _) -> 1u
         | Node (l, r, _, _) ->
             /// Mutable stack. Holds the trees which still need to be traversed.
-            let stack = Stack (defaultStackCapacity)
+            let stack = Stack<SetTree<'T>> (defaultStackCapacity)
 
             /// The number of elements discovered in the tree so far.
             let mutable count = 1u   // Start at one (1) to include this root node.
@@ -426,7 +426,7 @@ type internal SetTree<'T when 'T : comparison> =
             action x
         | Node (l, r, x, _) ->
             /// Mutable stack. Holds the trees which still need to be traversed.
-            let stack = Stack (defaultStackCapacity)
+            let stack = Stack<SetTree<'T>> (defaultStackCapacity)
 
             // Traverse the tree using the mutable stack, applying the folder function to
             // each value to update the state value.
@@ -468,7 +468,7 @@ type internal SetTree<'T when 'T : comparison> =
             let folder = FSharpFunc<_,_,_>.Adapt folder
 
             /// Mutable stack. Holds the trees which still need to be traversed.
-            let stack = Stack (defaultStackCapacity)
+            let stack = Stack<SetTree<'T>> (defaultStackCapacity)
 
             /// The current state value.
             let mutable state = state
@@ -516,7 +516,7 @@ type internal SetTree<'T when 'T : comparison> =
             let folder = FSharpFunc<_,_,_>.Adapt folder
 
             /// Mutable stack. Holds the trees which still need to be traversed.
-            let stack = Stack (defaultStackCapacity)
+            let stack = Stack<SetTree<'T>> (defaultStackCapacity)
 
             /// The current state value.
             let mutable state = state
@@ -561,7 +561,7 @@ type internal SetTree<'T when 'T : comparison> =
             predicate x
         | Node (l, r, x, _) ->
             /// Mutable stack. Holds the trees which still need to be traversed.
-            let stack = Stack (defaultStackCapacity)
+            let stack = Stack<SetTree<'T>> (defaultStackCapacity)
 
             /// Have we found a matching element?
             let mutable foundMatch = false
@@ -606,7 +606,7 @@ type internal SetTree<'T when 'T : comparison> =
             predicate x
         | Node (l, r, x, _) ->
             /// Mutable stack. Holds the trees which still need to be traversed.
-            let stack = Stack (defaultStackCapacity)
+            let stack = Stack<SetTree<'T>> (defaultStackCapacity)
 
             /// Have all of the elements we've seen so far matched the predicate?
             let mutable allElementsMatch = true
