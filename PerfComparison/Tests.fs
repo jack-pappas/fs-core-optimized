@@ -32,12 +32,14 @@ module Create =
         let baseline = Set.ofArray values
         watch.Stop ()
         let baselineTime = watch.Elapsed
+
         watch.Reset ()
         System.GC.Collect ()
         watch.Start ()
         let result1 = FSharpCore.Set.ofArray values
         watch.Stop ()
         let result1Time = watch.Elapsed
+        
         watch.Reset ()
         System.GC.Collect ()
         watch.Start ()
@@ -45,16 +47,24 @@ module Create =
         watch.Stop ()
         let result2Time = watch.Elapsed
 
-        { Baseline = baselineTime; Result1 = result1Time; Result2 = result2Time; }
+        watch.Reset ()
+        System.GC.Collect ()
+        watch.Start ()
+        let result3 = HashSet.ofArray values
+        watch.Stop ()
+        let result3Time = watch.Elapsed
+
+        { Baseline = baselineTime; Result1 = result1Time; Result2 = result2Time; Result3 = result3Time; }
 
     //
-    let int64 count maxValue density =
+    let int64 count maxValue density : TestResult3<_> =
         let values = RandomArray.int64 count maxValue density
         System.GC.Collect ()
         let watch = System.Diagnostics.Stopwatch.StartNew ()
         let baseline = Set.ofArray values
         watch.Stop ()
         let baselineTime = watch.Elapsed
+        
         watch.Reset ()
         System.GC.Collect ()
         watch.Start ()
@@ -62,7 +72,16 @@ module Create =
         watch.Stop ()
         let result1Time = watch.Elapsed
 
-        { Baseline = baselineTime; Result = result1Time; }
+        (* TODO : Add LongSet *)
+
+        watch.Reset ()
+        System.GC.Collect ()
+        watch.Start ()
+        let result3 = HashSet.ofArray values
+        watch.Stop ()
+        let result3Time = watch.Elapsed
+
+        { Baseline = baselineTime; Result1 = result1Time; Result2 = result3Time; }
 
 
 /// Functions for benchmarking the set union operation.

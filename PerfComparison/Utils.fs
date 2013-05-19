@@ -24,11 +24,19 @@ type TestResult<'T when 'T : comparison> = {
     Result : 'T;
 }
 
-/// The results of three (3) tests -- a baseline test, and two comparison tests.
+/// The results of three (3) tests -- a baseline test and two comparison tests.
 type TestResult3<'T when 'T : comparison> = {
     Baseline : 'T;
     Result1 : 'T;
     Result2 : 'T;
+}
+
+/// The results of four (4) tests -- a baseline test and three comparison tests.
+type TestResult4<'T when 'T : comparison> = {
+    Baseline : 'T;
+    Result1 : 'T;
+    Result2 : 'T;
+    Result3 : 'T;
 }
 
 /// Functions for creating arrays of random values.
@@ -90,5 +98,13 @@ module Helpers =
         printfn "Baseline: %4f (ms)" result.Baseline.TotalMilliseconds
         printfn "Result 1: %4f (ms)" result.Result1.TotalMilliseconds
         printfn "Result 2: %4f (ms)" result.Result2.TotalMilliseconds
+        printfn ""
+
+    /// Print timing results.
+    let printTimings4 (result : TestResult4<TimeSpan>) =
+        printfn "Baseline: %4f (ms)" result.Baseline.TotalMilliseconds
+        printfn "Result 1: %4f (ms)" result.Result1.TotalMilliseconds
+        printfn "Result 2: %4f (ms)" result.Result2.TotalMilliseconds
+        printfn "Result 3: %4f (ms)" result.Result3.TotalMilliseconds
         printfn ""
 
