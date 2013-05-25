@@ -87,7 +87,7 @@ module Create =
 /// Functions for benchmarking the set union operation.
 module Union =
     //
-    let int32 elementsPerSet setCount maxValue density =
+    let int32 elementsPerSet setCount maxValue density : TestResult3<_> =
         let setValues =
             Array.init setCount <| fun _ ->
                 RandomArray.int32 elementsPerSet maxValue density
@@ -110,21 +110,22 @@ module Union =
         let result1 = FSharpCore.Set.unionMany optSets
         watch.Stop ()
         let result1Time = watch.Elapsed
+        watch.Reset ()
 
-//        // Create ExtCore.IntSet sets from the values.
-//        let intSets = Array.map IntSet.ofArray setValues
-//
-//        System.GC.Collect ()
-//        watch.Start ()
-//        let result2 = IntSet.unionMany optSets
-//        watch.Stop ()
-//        let result2Time = watch.Elapsed
+        // Create ExtCore.IntSet sets from the values.
+        let intSets = Array.map IntSet.ofArray setValues
+
+        System.GC.Collect ()
+        watch.Start ()
+        let result2 = IntSet.unionMany intSets
+        watch.Stop ()
+        let result2Time = watch.Elapsed
+        watch.Reset ()
 
         // Verify the results.
-        assert (Set.toArray baseline = FSharpCore.Set.toArray result1)
+        assert (Set.toArray baseline = IntSet.toArray result2)
 
-        { Baseline = baselineTime; Result = result1Time; }
-        //{ Baseline = baselineTime; Result1 = result1Time; Result2 = result2Time; }
+        { Baseline = baselineTime; Result1 = result1Time; Result2 = result2Time; }
 
     //
     let int64 elementsPerSet setCount maxValue density =
@@ -160,7 +161,7 @@ module Union =
 /// Functions for benchmarking the set intersection operation.
 module Intersect =
     //
-    let int32 elementsPerSet setCount maxValue density =
+    let int32 elementsPerSet setCount maxValue density : TestResult3<_> =
         let setValues =
             Array.init setCount <| fun _ ->
                 RandomArray.int32 elementsPerSet maxValue density
@@ -183,21 +184,21 @@ module Intersect =
         let result1 = FSharpCore.Set.intersectMany optSets
         watch.Stop ()
         let result1Time = watch.Elapsed
+        watch.Reset ()
 
-//        // Create ExtCore.IntSet sets from the values.
-//        let intSets = Array.map IntSet.ofArray setValues
-//
-//        System.GC.Collect ()
-//        watch.Start ()
-//        let result2 = IntSet.intersectMany optSets
-//        watch.Stop ()
-//        let result2Time = watch.Elapsed
+        // Create ExtCore.IntSet sets from the values.
+        let intSets = Array.map IntSet.ofArray setValues
+
+        System.GC.Collect ()
+        watch.Start ()
+        let result2 = IntSet.intersectMany intSets
+        watch.Stop ()
+        let result2Time = watch.Elapsed
 
         // Verify the results.
-        assert (Set.toArray baseline = FSharpCore.Set.toArray result1)
+        assert (Set.toArray baseline = IntSet.toArray result2)
 
-        { Baseline = baselineTime; Result = result1Time; }
-        //{ Baseline = baselineTime; Result1 = result1Time; Result2 = result2Time; }
+        { Baseline = baselineTime; Result1 = result1Time; Result2 = result2Time; }
 
     //
     let int64 elementsPerSet setCount maxValue density =

@@ -58,7 +58,7 @@ do
     // Test 32-bit integers.
     let resultInt32 = Union.int32 1000 10000 System.Int32.MaxValue 0.85
     printfn "Union Random Set<int> (n=1000, N=10000)"
-    printTimings resultInt32
+    printTimings3 resultInt32
 
     // Test 64-bit integers.
     let resultInt64 = Union.int64 1000 10000 System.Int64.MaxValue 0.85
@@ -71,7 +71,7 @@ do
     // Test 32-bit integers.
     let resultInt32 = Intersect.int32 1000 10000 System.Int32.MaxValue 0.85
     printfn "Intersect Random Set<int> (n=1000, N=10000)"
-    printTimings resultInt32
+    printTimings3 resultInt32
 
     // Test 64-bit integers.
     let resultInt64 = Intersect.int64 1000 10000 System.Int64.MaxValue 0.85
