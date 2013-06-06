@@ -58,6 +58,13 @@ type internal SetTree<'T when 'T : comparison> =
         | [], [] -> 0
         | [], _ -> -1
         | _, [] -> 1
+        
+        // OPTIMIZATION : If two trees are identical, there's no need to compare them.
+        | t1 :: l1, t2 :: l2
+            when System.Object.ReferenceEquals (t1, t2) ->
+            // Continue comparing the lists.
+            SetTree.CompareStacks (comparer, l1, l2)
+        
         | (Empty :: t1), (Empty :: t2) ->
             SetTree.CompareStacks (comparer, t1, t2)
         | (Node (Empty, Empty, n1k, _) :: t1), (Node (Empty, Empty, n2k, _) :: t2) ->
@@ -98,12 +105,15 @@ type internal SetTree<'T when 'T : comparison> =
                 
     //
     static member Compare (comparer : IComparer<'T>, s1 : SetTree<'T>, s2 : SetTree<'T>) : int =
-        match s1, s2 with
-        | Empty, Empty -> 0
-        | Empty, _ -> -1
-        | _, Empty -> 1
-        | _ ->
-            SetTree<'T>.CompareStacks (comparer, [s1], [s2])
+        // OPTIMIZATION : If two trees are identical, there's no need to compare them.
+        if System.Object.ReferenceEquals (s1, s2) then 0
+        else
+            match s1, s2 with
+            | Empty, Empty -> 0
+            | Empty, _ -> -1
+            | _, Empty -> 1
+            | _ ->
+                SetTree<'T>.CompareStacks (comparer, [s1], [s2])
 
     /// Computes the height of a SetTree (rather than returning the height value stored in it's root).
     //[<Pure>]

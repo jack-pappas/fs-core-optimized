@@ -59,6 +59,13 @@ type internal MapTree<'Key, 'Value when 'Key : comparison> =
         | [], [] -> 0
         | [], _ -> -1
         | _, [] -> 1
+        
+        // OPTIMIZATION : If two trees are identical, there's no need to compare them.
+        | t1 :: l1, t2 :: l2
+            when System.Object.ReferenceEquals (t1, t2) ->
+            // Continue comparing the lists.
+            MapTree.CompareStacks (comparer, l1, l2)
+        
         | (Empty :: t1), (Empty :: t2) ->
             MapTree.CompareStacks (comparer, t1, t2)
         | (Node (Empty, Empty, n1kvp, _) :: t1), (Node (Empty, Empty, n2kvp, _) :: t2) ->
@@ -99,12 +106,15 @@ type internal MapTree<'Key, 'Value when 'Key : comparison> =
                 
     //
     static member Compare (comparer : IComparer<'Key>, s1 : MapTree<'Key, 'Value>, s2 : MapTree<'Key, 'Value>) : int =
-        match s1, s2 with
-        | Empty, Empty -> 0
-        | Empty, _ -> -1
-        | _, Empty -> 1
-        | _ ->
-            MapTree<'Key, 'Value>.CompareStacks (comparer, [s1], [s2])
+        // OPTIMIZATION : If two trees are identical, there's no need to compare them.
+        if System.Object.ReferenceEquals (s1, s2) then 0
+        else
+            match s1, s2 with
+            | Empty, Empty -> 0
+            | Empty, _ -> -1
+            | _, Empty -> 1
+            | _ ->
+                MapTree<'Key, 'Value>.CompareStacks (comparer, [s1], [s2])
 
     /// Computes the height of a MapTree (rather than returning the height value stored in it's root).
     //[<Pure>]
