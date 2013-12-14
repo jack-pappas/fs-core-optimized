@@ -8,6 +8,12 @@ These implementations are designed to be **100% compatible** with the original c
 if you find any inconsistency between the implementations, please open an issue here on
 GitHub so I can fix it; be sure to include all relevant details.
 
+**UPDATE**: For easier use, I have incorporated these changes into an ``optimized`` branch in my fork of
+``fsharp/fsharp``. All you need to do to use these optimized implementations now is to clone my fork,
+checkout the ``optimized`` branch, compile and install.
+
+  - https://github.com/jack-pappas/fsharp
+
 
 License
 =======
