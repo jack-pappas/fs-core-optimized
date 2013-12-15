@@ -18,25 +18,19 @@ limitations under the License.
 
 namespace PerfComparison
 
-/// The results of two (2) tests -- a baseline test and a comparison test.
-type TestResult<'T when 'T : comparison> = {
-    Baseline : 'T;
-    Result : 'T;
-}
-
 /// The results of three (3) tests -- a baseline test and two comparison tests.
 type TestResult3<'T when 'T : comparison> = {
-    Baseline : 'T;
-    Result1 : 'T;
-    Result2 : 'T;
+    ``FSharp.Core (Original)`` : 'T;
+    ``FSharp.Core (Optimized)`` : 'T;
+    ``ExtCore (Patricia Trie)`` : 'T;
 }
 
 /// The results of four (4) tests -- a baseline test and three comparison tests.
 type TestResult4<'T when 'T : comparison> = {
-    Baseline : 'T;
-    Result1 : 'T;
-    Result2 : 'T;
-    Result3 : 'T;
+    ``FSharp.Core (Original)`` : 'T;
+    ``FSharp.Core (Optimized)`` : 'T;
+    ``ExtCore (Patricia Trie)`` : 'T;
+    ``ExtCore (HashSet)`` : 'T;
 }
 
 /// Functions for creating arrays of random values.
@@ -88,23 +82,17 @@ module Helpers =
     open System
 
     /// Print timing results.
-    let printTimings (result : TestResult<TimeSpan>) =
-        printfn "Baseline: %4f (ms)" result.Baseline.TotalMilliseconds
-        printfn "Result  : %4f (ms)" result.Result.TotalMilliseconds
-        printfn ""
-
-    /// Print timing results.
     let printTimings3 (result : TestResult3<TimeSpan>) =
-        printfn "Baseline: %4f (ms)" result.Baseline.TotalMilliseconds
-        printfn "Result 1: %4f (ms)" result.Result1.TotalMilliseconds
-        printfn "Result 2: %4f (ms)" result.Result2.TotalMilliseconds
+        printfn "FSharp.Core (Original)  : %4f (ms)" result.``FSharp.Core (Original)``.TotalMilliseconds
+        printfn "FSharp.Core (Optimized) : %4f (ms)" result.``FSharp.Core (Optimized)``.TotalMilliseconds
+        printfn "ExtCore (Patricia Trie) : %4f (ms)" result.``ExtCore (Patricia Trie)``.TotalMilliseconds
         printfn ""
 
     /// Print timing results.
     let printTimings4 (result : TestResult4<TimeSpan>) =
-        printfn "Baseline: %4f (ms)" result.Baseline.TotalMilliseconds
-        printfn "Result 1: %4f (ms)" result.Result1.TotalMilliseconds
-        printfn "Result 2: %4f (ms)" result.Result2.TotalMilliseconds
-        printfn "Result 3: %4f (ms)" result.Result3.TotalMilliseconds
+        printfn "FSharp.Core (Original)  : %4f (ms)" result.``FSharp.Core (Original)``.TotalMilliseconds
+        printfn "FSharp.Core (Optimized) : %4f (ms)" result.``FSharp.Core (Optimized)``.TotalMilliseconds
+        printfn "ExtCore (Patricia Trie) : %4f (ms)" result.``ExtCore (Patricia Trie)``.TotalMilliseconds
+        printfn "ExtCore (HashSet)       : %4f (ms)" result.``ExtCore (HashSet)``.TotalMilliseconds
         printfn ""
 

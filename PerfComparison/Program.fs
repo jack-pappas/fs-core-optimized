@@ -50,7 +50,7 @@ do
     // Test 64-bit integers.
     let resultInt64 = Create.int64 1000000 System.Int64.MaxValue 0.85
     printfn "Create Random Set<int64> (n=1000000)"
-    printTimings3 resultInt64
+    printTimings4 resultInt64
 
 
 (* Set union *)
@@ -63,7 +63,7 @@ do
     // Test 64-bit integers.
     let resultInt64 = Union.int64 1000 10000 System.Int64.MaxValue 0.85
     printfn "Union Random Set<int64> (n=1000, N=10000)"
-    printTimings resultInt64
+    printTimings3 resultInt64
 
 
 (* Set intersection *)
@@ -76,7 +76,7 @@ do
     // Test 64-bit integers.
     let resultInt64 = Intersect.int64 1000 10000 System.Int64.MaxValue 0.85
     printfn "Intersect Random Set<int64> (n=1000, N=10000)"
-    printTimings resultInt64
+    printTimings3 resultInt64
     
 
 

@@ -54,10 +54,13 @@ module Create =
         watch.Stop ()
         let result3Time = watch.Elapsed
 
-        { Baseline = baselineTime; Result1 = result1Time; Result2 = result2Time; Result3 = result3Time; }
+        { ``FSharp.Core (Original)`` = baselineTime;
+          ``FSharp.Core (Optimized)`` = result1Time;
+          ``ExtCore (Patricia Trie)`` = result2Time;
+          ``ExtCore (HashSet)`` = result3Time; }
 
     //
-    let int64 count maxValue density : TestResult3<_> =
+    let int64 count maxValue density : TestResult4<_> =
         let values = RandomArray.int64 count maxValue density
         System.GC.Collect ()
         let watch = System.Diagnostics.Stopwatch.StartNew ()
@@ -72,7 +75,12 @@ module Create =
         watch.Stop ()
         let result1Time = watch.Elapsed
 
-        (* TODO : Add LongSet *)
+        watch.Reset ()
+        System.GC.Collect ()
+        watch.Start ()
+        let result2 = LongSet.ofArray values
+        watch.Stop ()
+        let result2Time = watch.Elapsed
 
         watch.Reset ()
         System.GC.Collect ()
@@ -81,7 +89,10 @@ module Create =
         watch.Stop ()
         let result3Time = watch.Elapsed
 
-        { Baseline = baselineTime; Result1 = result1Time; Result2 = result3Time; }
+        { ``FSharp.Core (Original)`` = baselineTime;
+          ``FSharp.Core (Optimized)`` = result1Time;
+          ``ExtCore (Patricia Trie)`` = result2Time;
+          ``ExtCore (HashSet)`` = result3Time; }
 
 
 /// Functions for benchmarking the set union operation.
@@ -125,10 +136,12 @@ module Union =
         // Verify the results.
         assert (Set.toArray baseline = IntSet.toArray result2)
 
-        { Baseline = baselineTime; Result1 = result1Time; Result2 = result2Time; }
+        { ``FSharp.Core (Original)`` = baselineTime;
+          ``FSharp.Core (Optimized)`` = result1Time;
+          ``ExtCore (Patricia Trie)`` = result2Time; }
 
     //
-    let int64 elementsPerSet setCount maxValue density =
+    let int64 elementsPerSet setCount maxValue density : TestResult3<_> =
         let setValues =
             Array.init setCount <| fun _ ->
                 RandomArray.int64 elementsPerSet maxValue density
@@ -138,9 +151,9 @@ module Union =
         
         System.GC.Collect ()
         let watch = System.Diagnostics.Stopwatch.StartNew ()
-        let oldResult = Set.unionMany standardSets
+        let baseline = Set.unionMany standardSets
         watch.Stop ()
-        let oldTime = watch.Elapsed
+        let baselineTime = watch.Elapsed
         watch.Reset ()
 
         // Create fs-core-optimized sets from the values.
@@ -148,14 +161,27 @@ module Union =
 
         System.GC.Collect ()
         watch.Start ()
-        let newResult = FSharpCore.Set.unionMany optSets
+        let result1 = FSharpCore.Set.unionMany optSets
         watch.Stop ()
-        let newTime = watch.Elapsed
+        let result1Time = watch.Elapsed
+
+        // Create ExtCore.LongSet sets from the values.
+        let longSets = Array.map LongSet.ofArray setValues
+
+        System.GC.Collect ()
+        watch.Start ()
+        let result2 = LongSet.unionMany longSets
+        watch.Stop ()
+        let result2Time = watch.Elapsed
+        watch.Reset ()
 
         // Verify the results.
-        assert (Set.toArray oldResult = FSharpCore.Set.toArray newResult)
+        assert (Set.toArray baseline = FSharpCore.Set.toArray result1)
+        assert (Set.toArray baseline = LongSet.toArray result2)
 
-        { Baseline = oldTime; Result = newTime; }
+        { ``FSharp.Core (Original)`` = baselineTime;
+          ``FSharp.Core (Optimized)`` = result1Time;
+          ``ExtCore (Patricia Trie)`` = result2Time; }
 
 
 /// Functions for benchmarking the set intersection operation.
@@ -198,10 +224,12 @@ module Intersect =
         // Verify the results.
         assert (Set.toArray baseline = IntSet.toArray result2)
 
-        { Baseline = baselineTime; Result1 = result1Time; Result2 = result2Time; }
+        { ``FSharp.Core (Original)`` = baselineTime;
+          ``FSharp.Core (Optimized)`` = result1Time;
+          ``ExtCore (Patricia Trie)`` = result2Time; }
 
     //
-    let int64 elementsPerSet setCount maxValue density =
+    let int64 elementsPerSet setCount maxValue density : TestResult3<_> =
         let setValues =
             Array.init setCount <| fun _ ->
                 RandomArray.int64 elementsPerSet maxValue density
@@ -211,9 +239,9 @@ module Intersect =
         
         System.GC.Collect ()
         let watch = System.Diagnostics.Stopwatch.StartNew ()
-        let oldResult = Set.intersectMany standardSets
+        let baseline = Set.intersectMany standardSets
         watch.Stop ()
-        let oldTime = watch.Elapsed
+        let baselineTime = watch.Elapsed
         watch.Reset ()
 
         // Create fs-core-optimized sets from the values.
@@ -221,15 +249,24 @@ module Intersect =
 
         System.GC.Collect ()
         watch.Start ()
-        let newResult = FSharpCore.Set.intersectMany optSets
+        let result1 = FSharpCore.Set.intersectMany optSets
         watch.Stop ()
-        let newTime = watch.Elapsed
+        let result1Time = watch.Elapsed
+
+        // Create ExtCore.LongSet sets from the values.
+        let longSets = Array.map LongSet.ofArray setValues
+
+        System.GC.Collect ()
+        watch.Start ()
+        let result2 = LongSet.intersectMany longSets
+        watch.Stop ()
+        let result2Time = watch.Elapsed
 
         // Verify the results.
-        assert (Set.toArray oldResult = FSharpCore.Set.toArray newResult)
+        assert (Set.toArray baseline = FSharpCore.Set.toArray result1)
+        assert (Set.toArray baseline = LongSet.toArray result2)
 
-        { Baseline = oldTime; Result = newTime; }
-
-
-
+        { ``FSharp.Core (Original)`` = baselineTime;
+          ``FSharp.Core (Optimized)`` = result1Time;
+          ``ExtCore (Patricia Trie)`` = result2Time; }
 
