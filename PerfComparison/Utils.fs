@@ -18,20 +18,6 @@ limitations under the License.
 
 namespace PerfComparison
 
-/// The results of three (3) tests -- a baseline test and two comparison tests.
-type TestResult3<'T when 'T : comparison> = {
-    ``FSharp.Core (Original)`` : 'T;
-    ``FSharp.Core (Optimized)`` : 'T;
-    ``ExtCore (Patricia Trie)`` : 'T;
-}
-
-/// The results of four (4) tests -- a baseline test and three comparison tests.
-type TestResult4<'T when 'T : comparison> = {
-    ``FSharp.Core (Original)`` : 'T;
-    ``FSharp.Core (Optimized)`` : 'T;
-    ``ExtCore (Patricia Trie)`` : 'T;
-    ``ExtCore (HashSet)`` : 'T;
-}
 
 /// Functions for creating arrays of random values.
 module RandomArray =
@@ -75,24 +61,4 @@ module RandomArray =
                 rand.NextBytes bytes
                 System.BitConverter.ToInt64 (bytes, 0) % maxValue
         arr
-
-
-[<AutoOpen>]
-module Helpers =
-    open System
-
-    /// Print timing results.
-    let printTimings3 (result : TestResult3<TimeSpan>) =
-        printfn "FSharp.Core (Original)  : %4f (ms)" result.``FSharp.Core (Original)``.TotalMilliseconds
-        printfn "FSharp.Core (Optimized) : %4f (ms)" result.``FSharp.Core (Optimized)``.TotalMilliseconds
-        printfn "ExtCore (Patricia Trie) : %4f (ms)" result.``ExtCore (Patricia Trie)``.TotalMilliseconds
-        printfn ""
-
-    /// Print timing results.
-    let printTimings4 (result : TestResult4<TimeSpan>) =
-        printfn "FSharp.Core (Original)  : %4f (ms)" result.``FSharp.Core (Original)``.TotalMilliseconds
-        printfn "FSharp.Core (Optimized) : %4f (ms)" result.``FSharp.Core (Optimized)``.TotalMilliseconds
-        printfn "ExtCore (Patricia Trie) : %4f (ms)" result.``ExtCore (Patricia Trie)``.TotalMilliseconds
-        printfn "ExtCore (HashSet)       : %4f (ms)" result.``ExtCore (HashSet)``.TotalMilliseconds
-        printfn ""
-
+        

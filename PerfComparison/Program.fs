@@ -23,18 +23,23 @@ module PerfComparison.Program
 open PerfComparison.Tests
 
 
+/// Density parameter for randomly-generated sets.
+/// Must be in the range (0, 1].
+let [<Literal>] density = 0.85
+
+
 (* Warm up so JIT overhead won't affect timings. *)
 do
     printf "Warming up..."
     
-    Create.int32 100 System.Int32.MaxValue 0.9 |> ignore
-    Create.int64 100 System.Int64.MaxValue 0.9 |> ignore
+    Create.int32 100 System.Int32.MaxValue density |> ignore
+    Create.int64 100 System.Int64.MaxValue density |> ignore
     
-    Union.int32 100 10 System.Int32.MaxValue 0.9 |> ignore
-    Union.int64 100 10 System.Int64.MaxValue 0.9 |> ignore
+    Union.int32 100 10 System.Int32.MaxValue density |> ignore
+    Union.int64 100 10 System.Int64.MaxValue density |> ignore
 
-    Intersect.int32 100 10 System.Int32.MaxValue 0.9 |> ignore
-    Intersect.int64 100 10 System.Int64.MaxValue 0.9 |> ignore
+    Intersect.int32 100 10 System.Int32.MaxValue density |> ignore
+    Intersect.int64 100 10 System.Int64.MaxValue density |> ignore
 
     printfn "done."
     printfn ""
@@ -43,40 +48,40 @@ do
 (* Set creation *)
 do
     // Test 32-bit integers.
-    let resultInt32 = Create.int32 1000000 System.Int32.MaxValue 0.85
+    let resultInt32 = Create.int32 1000000 System.Int32.MaxValue density
     printfn "Create Random Set<int> (n=1000000)"
-    printTimings4 resultInt32
+    TestResult<_>.PrintTimings resultInt32
 
     // Test 64-bit integers.
-    let resultInt64 = Create.int64 1000000 System.Int64.MaxValue 0.85
+    let resultInt64 = Create.int64 1000000 System.Int64.MaxValue density
     printfn "Create Random Set<int64> (n=1000000)"
-    printTimings4 resultInt64
+    TestResult<_>.PrintTimings resultInt64
 
 
 (* Set union *)
 do
     // Test 32-bit integers.
-    let resultInt32 = Union.int32 1000 10000 System.Int32.MaxValue 0.85
+    let resultInt32 = Union.int32 1000 10000 System.Int32.MaxValue density
     printfn "Union Random Set<int> (n=1000, N=10000)"
-    printTimings3 resultInt32
+    TestResult<_>.PrintTimings resultInt32
 
     // Test 64-bit integers.
-    let resultInt64 = Union.int64 1000 10000 System.Int64.MaxValue 0.85
+    let resultInt64 = Union.int64 1000 10000 System.Int64.MaxValue density
     printfn "Union Random Set<int64> (n=1000, N=10000)"
-    printTimings3 resultInt64
+    TestResult<_>.PrintTimings resultInt64
 
 
 (* Set intersection *)
 do
     // Test 32-bit integers.
-    let resultInt32 = Intersect.int32 1000 10000 System.Int32.MaxValue 0.85
+    let resultInt32 = Intersect.int32 1000 10000 System.Int32.MaxValue density
     printfn "Intersect Random Set<int> (n=1000, N=10000)"
-    printTimings3 resultInt32
+    TestResult<_>.PrintTimings resultInt32
 
     // Test 64-bit integers.
-    let resultInt64 = Intersect.int64 1000 10000 System.Int64.MaxValue 0.85
+    let resultInt64 = Intersect.int64 1000 10000 System.Int64.MaxValue density
     printfn "Intersect Random Set<int64> (n=1000, N=10000)"
-    printTimings3 resultInt64
+    TestResult<_>.PrintTimings resultInt64
     
 
 
