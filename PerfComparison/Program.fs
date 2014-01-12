@@ -23,69 +23,104 @@ module PerfComparison.Program
 open PerfComparison.Tests
 
 
-/// Density parameter for randomly-generated sets.
-/// Must be in the range (0, 1].
-let [<Literal>] density = 0.85
-
-
-(* Warm up so JIT overhead won't affect timings. *)
-do
+//
+let warmup seed density =
     printf "Warming up..."
     
-    Create.int32 100 System.Int32.MaxValue density |> ignore
-    Create.int64 100 System.Int64.MaxValue density |> ignore
+    Create.int32 seed 100 System.Int32.MaxValue density |> ignore
+    Create.int64 seed 100 System.Int64.MaxValue density |> ignore
     
-    Union.int32 100 10 System.Int32.MaxValue density |> ignore
-    Union.int64 100 10 System.Int64.MaxValue density |> ignore
+    Union.int32 seed 100 10 System.Int32.MaxValue density |> ignore
+    Union.int64 seed 100 10 System.Int64.MaxValue density |> ignore
 
-    Intersect.int32 100 10 System.Int32.MaxValue density |> ignore
-    Intersect.int64 100 10 System.Int64.MaxValue density |> ignore
+    Intersect.int32 seed 100 10 System.Int32.MaxValue density |> ignore
+    Intersect.int64 seed 100 10 System.Int64.MaxValue density |> ignore
 
     printfn "done."
     printfn ""
 
+//
+let benchmark seed density =
+    (* Set creation *)
 
-(* Set creation *)
-do
     // Test 32-bit integers.
-    let resultInt32 = Create.int32 1000000 System.Int32.MaxValue density
+    let resultInt32 = Create.int32 seed 1000000 System.Int32.MaxValue density
     printfn "Create Random Set<int> (n=1000000)"
     TestResult<_>.PrintTimings resultInt32
 
     // Test 64-bit integers.
-    let resultInt64 = Create.int64 1000000 System.Int64.MaxValue density
+    let resultInt64 = Create.int64 seed 1000000 System.Int64.MaxValue density
     printfn "Create Random Set<int64> (n=1000000)"
     TestResult<_>.PrintTimings resultInt64
 
 
-(* Set union *)
-do
+    (* Set union *)
+
     // Test 32-bit integers.
-    let resultInt32 = Union.int32 1000 10000 System.Int32.MaxValue density
+    let resultInt32 = Union.int32 seed 1000 10000 System.Int32.MaxValue density
     printfn "Union Random Set<int> (n=1000, N=10000)"
     TestResult<_>.PrintTimings resultInt32
 
     // Test 64-bit integers.
-    let resultInt64 = Union.int64 1000 10000 System.Int64.MaxValue density
+    let resultInt64 = Union.int64 seed 1000 10000 System.Int64.MaxValue density
     printfn "Union Random Set<int64> (n=1000, N=10000)"
     TestResult<_>.PrintTimings resultInt64
 
 
-(* Set intersection *)
-do
+    (* Set intersection *)
+
     // Test 32-bit integers.
-    let resultInt32 = Intersect.int32 1000 10000 System.Int32.MaxValue density
+    let resultInt32 = Intersect.int32 seed 1000 10000 System.Int32.MaxValue density
     printfn "Intersect Random Set<int> (n=1000, N=10000)"
     TestResult<_>.PrintTimings resultInt32
 
     // Test 64-bit integers.
-    let resultInt64 = Intersect.int64 1000 10000 System.Int64.MaxValue density
+    let resultInt64 = Intersect.int64 seed 1000 10000 System.Int64.MaxValue density
     printfn "Intersect Random Set<int64> (n=1000, N=10000)"
     TestResult<_>.PrintTimings resultInt64
     
 
+module Program =
+    /// Density parameter for randomly-generated sets.
+    /// Must be in the range (0, 1].
+    let [<Literal>] defaultDensity = 0.85
 
-printfn ""
-printfn "Press any key to exit..."
-System.Console.ReadKey () |> ignore
+    //
+    [<EntryPoint>]
+    let main args =
+        // Print header.
+        printfn "Results from running PerfComparison (https://github.com/jack-pappas/fs-core-optimized)"
+
+        // TODO : Get the density from command-line args.
+        // TEMP : Just use a fixed density value.
+        /// Density parameter for randomly-generated sets.
+        /// Must be in the range (0, 1].
+        let density = defaultDensity
+
+        // TODO : Get the random seed from command-line args.
+        // TEMP : Just generate a random seed.
+        let seed =
+            let rng = System.Random()
+            rng.Next ()
+
+        // Print the density parameter and seed value.
+        printfn "Random set density parameter: %f" density
+        printfn "RNG seed: %i" seed
+        printfn "----"
+        printfn ""
+
+        (* Warm up so JIT overhead won't affect timings. *)
+        warmup seed density
+
+        (* Run the benchmark *)
+        benchmark seed density
+
+        (* Wait for a key to exit *)
+
+        printfn ""
+        if System.Environment.UserInteractive then
+            printfn "Press any key to exit..."
+            System.Console.ReadKey () |> ignore
+
+        0   // Exit code
 

@@ -46,8 +46,8 @@ type TestResult<'T when 'T : comparison> = {
 /// Functions for benchmarking set creation (and by correlation, the add/insert function).
 module Create =
     //
-    let int32 count maxValue density =
-        let values = RandomArray.int32 count maxValue density
+    let int32 seed count maxValue density =
+        let values = RandomArray.int32 seed count maxValue density
         System.GC.Collect (); System.GC.WaitForPendingFinalizers ()
         let watch = System.Diagnostics.Stopwatch.StartNew ()
         let baseline = Set.ofArray values
@@ -97,8 +97,8 @@ module Create =
           ``System.Collections.Immutable.ImmutableSortedSet`` = result5Time; }
 
     //
-    let int64 count maxValue density =
-        let values = RandomArray.int64 count maxValue density
+    let int64 seed count maxValue density =
+        let values = RandomArray.int64 seed count maxValue density
         System.GC.Collect (); System.GC.WaitForPendingFinalizers ()
         let watch = System.Diagnostics.Stopwatch.StartNew ()
         let baseline = Set.ofArray values
@@ -151,10 +151,16 @@ module Create =
 /// Functions for benchmarking the set union operation.
 module Union =
     //
-    let int32 elementsPerSet setCount maxValue density =
+    let int32 seed elementsPerSet setCount maxValue density =
         let setValues =
+            let rng = System.Random (seed)
+
+            // Create an array of random seeds based on the input seed.
+            // Generate a set of random integers from each of these seeds.
             Array.init setCount <| fun _ ->
-                RandomArray.int32 elementsPerSet maxValue density
+                rng.Next ()
+            |> Array.map (fun seed ->
+                RandomArray.int32 seed elementsPerSet maxValue density)
 
         // Create F# Sets from the values.
         let standardSets = Array.map Set.ofArray setValues
@@ -237,10 +243,16 @@ module Union =
           ``System.Collections.Immutable.ImmutableSortedSet`` = result5Time; }
 
     //
-    let int64 elementsPerSet setCount maxValue density =
+    let int64 seed elementsPerSet setCount maxValue density =
         let setValues =
+            let rng = System.Random (seed)
+
+            // Create an array of random seeds based on the input seed.
+            // Generate a set of random integers from each of these seeds.
             Array.init setCount <| fun _ ->
-                RandomArray.int64 elementsPerSet maxValue density
+                rng.Next ()
+            |> Array.map (fun seed ->
+                RandomArray.int64 seed elementsPerSet maxValue density)
 
         // Create F# Sets from the values.
         let standardSets = Array.map Set.ofArray setValues
@@ -326,10 +338,16 @@ module Union =
 /// Functions for benchmarking the set intersection operation.
 module Intersect =
     //
-    let int32 elementsPerSet setCount maxValue density =
+    let int32 seed elementsPerSet setCount maxValue density =
         let setValues =
+            let rng = System.Random (seed)
+
+            // Create an array of random seeds based on the input seed.
+            // Generate a set of random integers from each of these seeds.
             Array.init setCount <| fun _ ->
-                RandomArray.int32 elementsPerSet maxValue density
+                rng.Next ()
+            |> Array.map (fun seed ->
+                RandomArray.int32 seed elementsPerSet maxValue density)
 
         // Create F# Sets from the values.
         let standardSets = Array.map Set.ofArray setValues
@@ -410,10 +428,16 @@ module Intersect =
           ``System.Collections.Immutable.ImmutableSortedSet`` = result5Time; }
 
     //
-    let int64 elementsPerSet setCount maxValue density =
+    let int64 seed elementsPerSet setCount maxValue density =
         let setValues =
+            let rng = System.Random (seed)
+
+            // Create an array of random seeds based on the input seed.
+            // Generate a set of random integers from each of these seeds.
             Array.init setCount <| fun _ ->
-                RandomArray.int64 elementsPerSet maxValue density
+                rng.Next ()
+            |> Array.map (fun seed ->
+                RandomArray.int64 seed elementsPerSet maxValue density)
 
         // Create F# Sets from the values.
         let standardSets = Array.map Set.ofArray setValues

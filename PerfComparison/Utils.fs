@@ -22,7 +22,7 @@ namespace PerfComparison
 /// Functions for creating arrays of random values.
 module RandomArray =
     /// Creates a random array of 32-bit integers.
-    let int32 count maxValue density : int[] =
+    let int32 seed count maxValue density : int[] =
         // Preconditions
         if count < 0 then
             invalidArg "count" "The count cannot be negative."
@@ -33,7 +33,7 @@ module RandomArray =
         elif density > 1.0 then
             invalidArg "density" "The density value cannot be greater than one (1)."
 
-        let rand = System.Random ()
+        let rand = System.Random (seed)
         let maxValue = int <| (float maxValue) * (1.0 - density)
         let arr = Array.zeroCreate count
         for i = 0 to count - 1 do
@@ -41,7 +41,7 @@ module RandomArray =
         arr
 
     /// Creates a random array of 64-bit integers.
-    let int64 count (maxValue : int64) density : int64[] =
+    let int64 seed count (maxValue : int64) density : int64[] =
         // Preconditions
         if count < 0 then
             invalidArg "count" "The count cannot be negative."
@@ -52,7 +52,7 @@ module RandomArray =
         elif density > 1.0 then
             invalidArg "density" "The density value cannot be greater than one (1)."
 
-        let rand = System.Random ()
+        let rand = System.Random (seed)
         let maxValue = int64 <| (float maxValue) * (1.0 - density)
         let arr = Array.zeroCreate count
         let bytes = Array.zeroCreate sizeof<int64>
